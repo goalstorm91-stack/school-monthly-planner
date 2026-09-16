@@ -8,7 +8,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/fireba
 import {
   getAuth,
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   onAuthStateChanged,
@@ -157,21 +156,12 @@ onAuthStateChanged(auth, async (user) => {
 document.getElementById("googleSignInBtn").addEventListener("click", async () => {
   showAuthError(null);
   const provider = new GoogleAuthProvider();
+  // 팝업 방식은 브라우저의 제3자 쿠키 차단·COOP 정책 등으로 "열렸다 바로 닫힘" 증상이
+  // 흔히 발생해 신뢰할 수 없다고 판단, 전체 페이지 이동 방식(리디렉션)만 사용한다.
   try {
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
   } catch (e) {
-    if (e.code === "auth/popup-blocked" || e.code === "auth/cancelled-popup-request") {
-      showAuthError(AUTH_ERROR_MESSAGES[e.code] || "팝업 로그인이 막혀 다른 방식으로 다시 시도합니다...");
-      try {
-        await signInWithRedirect(auth, provider);
-      } catch (e2) {
-        showAuthError(AUTH_ERROR_MESSAGES[e2.code] || ("로그인에 실패했습니다: " + e2.message));
-      }
-    } else if (e.code === "auth/popup-closed-by-user") {
-      // 사용자가 스스로 팝업을 닫은 경우 — 별도 안내 없이 조용히 무시
-    } else {
-      showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
-    }
+    showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
   }
 });
 
