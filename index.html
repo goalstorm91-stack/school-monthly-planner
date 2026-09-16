@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>월중계획 대시보드</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===================== HEADER / TOOLBAR ===================== -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <input id="schoolName" class="school-name-input" type="text" value="OO초등학교" />
+      <span class="subtitle">월중계획 관리 대시보드</span>
+    </div>
+    <div class="topbar-right">
+      <button id="prevMonth" class="btn icon-btn" title="이전 달">◀</button>
+      <div class="ym-select">
+        <select id="yearSelect"></select>
+        <span>년</span>
+        <select id="monthSelect"></select>
+        <span>월</span>
+      </div>
+      <button id="nextMonth" class="btn icon-btn" title="다음 달">▶</button>
+      <button id="todayBtn" class="btn">오늘</button>
+      <div class="divider"></div>
+      <button id="printBtn" class="btn btn-primary">🖨 월중계획 인쇄</button>
+      <button id="exportBtn" class="btn">내보내기</button>
+      <button id="importBtn" class="btn">가져오기</button>
+      <input id="importFile" type="file" accept="application/json" hidden />
+    </div>
+  </header>
+
+  <!-- ===================== SUMMARY CARDS ===================== -->
+  <section class="summary-row">
+    <div class="summary-card event-color">
+      <div class="summary-num" id="sumEvents">0</div>
+      <div class="summary-label">이번 달 행사</div>
+    </div>
+    <div class="summary-card duty-color">
+      <div class="summary-num" id="sumDuties">0</div>
+      <div class="summary-label">복무(출장·연수 등)</div>
+    </div>
+    <div class="summary-card doc-color">
+      <div class="summary-num" id="sumDocs">0</div>
+      <div class="summary-label">공문 보고</div>
+    </div>
+    <div class="summary-card doc-pending-color">
+      <div class="summary-num" id="sumDocsPending">0</div>
+      <div class="summary-label">공문 처리 대기</div>
+    </div>
+  </section>
+
+  <!-- ===================== MAIN GRID ===================== -->
+  <main class="main-grid">
+
+    <!-- Calendar -->
+    <section class="calendar-panel">
+      <div class="calendar-toolbar">
+        <h2 id="calendarTitle">2026년 1월</h2>
+        <div class="legend">
+          <span class="legend-item"><i class="dot event-color"></i>행사</span>
+          <span class="legend-item"><i class="dot duty-color"></i>복무</span>
+          <span class="legend-item"><i class="dot doc-color"></i>공문</span>
+        </div>
+      </div>
+      <div class="weekday-row">
+        <div class="weekday sun">일</div>
+        <div class="weekday">월</div>
+        <div class="weekday">화</div>
+        <div class="weekday">수</div>
+        <div class="weekday">목</div>
+        <div class="weekday">금</div>
+        <div class="weekday sat">토</div>
+      </div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+    </section>
+
+    <!-- Side lists -->
+    <aside class="side-panel">
+      <div class="side-box">
+        <div class="side-box-header">
+          <h3>이번 달 복무 현황</h3>
+          <button class="btn btn-sm" data-add="duty">+ 추가</button>
+        </div>
+        <div id="dutyList" class="side-list"></div>
+      </div>
+      <div class="side-box">
+        <div class="side-box-header">
+          <h3>이번 달 공문 보고 현황</h3>
+          <button class="btn btn-sm" data-add="doc">+ 추가</button>
+        </div>
+        <div id="docList" class="side-list"></div>
+      </div>
+      <div class="side-box">
+        <div class="side-box-header">
+          <h3>이번 달 행사 목록</h3>
+          <button class="btn btn-sm" data-add="event">+ 추가</button>
+        </div>
+        <div id="eventList" class="side-list"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="app-footer">데이터는 이 브라우저에만 저장됩니다 (localStorage). 다른 컴퓨터에서 이어 작업하려면 "내보내기"로 백업 후 "가져오기"로 불러오세요.</footer>
+</div>
+
+<!-- ===================== DAY DETAIL / ADD MODAL ===================== -->
+<div id="modalOverlay" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">일정 추가</h3>
+      <button id="modalClose" class="btn icon-btn">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" data-type="event">행사</button>
+      <button class="tab-btn" data-type="duty">복무</button>
+      <button class="tab-btn" data-type="doc">공문</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- shared date field -->
+      <div class="form-row">
+        <label>날짜</label>
+        <input type="date" id="f-date" />
+        <label id="f-endDateLabel" class="inline-label" hidden>~ 종료일</label>
+        <input type="date" id="f-endDate" hidden />
+      </div>
+
+      <!-- 행사 fields -->
+      <div class="form-fields" data-fields="event">
+        <div class="form-row"><label>행사명</label><input type="text" id="ev-title" placeholder="예) 전교 학예회" /></div>
+        <div class="form-row"><label>메모</label><textarea id="ev-memo" placeholder="장소, 담당자, 준비물 등"></textarea></div>
+      </div>
+
+      <!-- 복무 fields -->
+      <div class="form-fields" data-fields="duty" hidden>
+        <div class="form-row"><label>대상자</label><input type="text" id="du-person" placeholder="예) 홍길동" /></div>
+        <div class="form-row">
+          <label>직위</label>
+          <select id="du-role">
+            <option>교장</option>
+            <option>교감</option>
+            <option>교무부장</option>
+            <option>부장교사</option>
+            <option>교사</option>
+            <option>행정직원</option>
+            <option>기타</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>구분</label>
+          <select id="du-type">
+            <option>출장</option>
+            <option>연수</option>
+            <option>조퇴</option>
+            <option>병가</option>
+            <option>공가</option>
+            <option>연가</option>
+            <option>기타</option>
+          </select>
+        </div>
+        <div class="form-row"><label>내용</label><input type="text" id="du-title" placeholder="예) 교육청 장학협의회" /></div>
+        <div class="form-row"><label>메모</label><textarea id="du-memo"></textarea></div>
+      </div>
+
+      <!-- 공문 fields -->
+      <div class="form-fields" data-fields="doc" hidden>
+        <div class="form-row"><label>공문 제목</label><input type="text" id="doc-title" placeholder="예) 2026학년도 방과후학교 운영계획 제출" /></div>
+        <div class="form-row"><label>발신(부서)</label><input type="text" id="doc-sender" placeholder="예) 교육지원청 초등교육과" /></div>
+        <div class="form-row">
+          <label>처리상태</label>
+          <select id="doc-status">
+            <option value="pending">처리중</option>
+            <option value="done">완료</option>
+          </select>
+        </div>
+        <div class="form-row"><label>메모</label><textarea id="doc-memo"></textarea></div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button id="deleteBtn" class="btn btn-danger" hidden>삭제</button>
+      <div class="spacer"></div>
+      <button id="cancelBtn" class="btn">취소</button>
+      <button id="saveBtn" class="btn btn-primary">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DAY LIST POPUP (click date number) ===================== -->
+<div id="dayPopover" class="day-popover" hidden></div>
+
+<!-- ===================== PRINT AREA (only visible when printing) ===================== -->
+<div id="printArea" class="print-area">
+  <div class="print-header">
+    <div class="print-title-block">
+      <h1 id="printTitle">2026년 1월 월중계획</h1>
+      <div id="printSchoolName" class="print-school-name">OO초등학교</div>
+    </div>
+    <table class="approval-table">
+      <tbody>
+        <tr>
+          <td class="approval-role">담당</td>
+          <td class="approval-role">교무부장</td>
+          <td class="approval-role">교감</td>
+          <td class="approval-role">교장</td>
+        </tr>
+        <tr class="approval-sign-row">
+          <td></td><td></td><td></td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <table class="print-table">
+    <thead>
+      <tr>
+        <th class="col-date">일</th>
+        <th class="col-day">요일</th>
+        <th class="col-event">행사</th>
+        <th class="col-duty">복무 (출장·연수 등)</th>
+        <th class="col-doc">공문 보고</th>
+      </tr>
+    </thead>
+    <tbody id="printTableBody"></tbody>
+  </table>
+
+  <div class="print-footer">
+    <span id="printDate"></span>
+    <span class="print-page-note">본 계획은 사정에 따라 변경될 수 있습니다.</span>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
