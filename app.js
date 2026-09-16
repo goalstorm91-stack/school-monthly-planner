@@ -1,87 +1,298 @@
 /* ============================================================
-   초등학교 교무부장 월중계획 대시보드
-   - 데이터는 브라우저 localStorage 에 저장됩니다.
-   - 행사 / 복무(출장·연수 등) / 공문 세 가지 항목을 날짜별로 관리하고
-     달력 대시보드로 보여주며, 인쇄용 월중계획표를 출력합니다.
+   초등학교 교무부장 월중계획 대시보드 (다중 학교 / 구성원 로그인판)
+   - 구글 로그인(Firebase Auth) + 학교별 실시간 공유 데이터(Firestore)
+   - 행사 / 복무(출장·연수 등) / 공문 세 가지 항목을 날짜별로 관리
    ============================================================ */
 
-const STORAGE_KEY = "schoolMonthlyPlanner.v1";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  onAuthStateChanged,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  addDoc,
+  onSnapshot,
+  serverTimestamp,
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
 
-/** @typedef {{id:string, date:string, endDate?:string, title:string, memo?:string}} EventItem */
-/** @typedef {{id:string, date:string, endDate?:string, person:string, role:string, type:string, title:string, memo?:string}} DutyItem */
-/** @typedef {{id:string, date:string, title:string, sender:string, status:'pending'|'done', memo?:string}} DocItem */
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
-function uid() {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-}
+const VIEW_PREF_KEY = "schoolMonthlyPlanner.viewPref";
 
 function todayStr() {
   return formatDate(new Date());
 }
-
 function formatDate(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-
 function parseDate(s) {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y, m - 1, d);
 }
-
-function loadState() {
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+function loadViewPref() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(VIEW_PREF_KEY);
     if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.warn("failed to load state", e);
-  }
+  } catch (e) {}
   const now = new Date();
-  return {
-    schoolName: "OO초등학교",
-    viewYear: now.getFullYear(),
-    viewMonth: now.getMonth() + 1, // 1-12
-    events: [],
-    duties: [],
-    docs: [],
-  };
+  return { viewYear: now.getFullYear(), viewMonth: now.getMonth() + 1 };
+}
+function saveViewPref() {
+  localStorage.setItem(VIEW_PREF_KEY, JSON.stringify({ viewYear: state.viewYear, viewMonth: state.viewMonth }));
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+const INVITE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 혼동되는 O/0, I/1 제외
+function generateInviteCode(len = 6) {
+  let out = "";
+  for (let i = 0; i < len; i++) out += INVITE_CODE_CHARS[Math.floor(Math.random() * INVITE_CODE_CHARS.length)];
+  return out;
 }
 
-let state = loadState();
+const state = {
+  ...loadViewPref(),
+  schoolName: "",
+  events: [],
+  duties: [],
+  docs: [],
+};
 
-// ------------- helpers to enumerate an item's date range -------------
-function eachDateInRange(startStr, endStr) {
-  const dates = [];
-  let cur = parseDate(startStr);
-  const end = endStr ? parseDate(endStr) : cur;
-  while (cur <= end) {
-    dates.push(formatDate(cur));
-    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
+let currentUser = null;
+let profile = null; // { schoolId, role, displayName, email }
+let schoolId = null;
+let schoolMeta = null; // { name, inviteCode, adminUids }
+let isAdmin = false;
+let unsubs = [];
+
+function canEdit(item) {
+  return !!currentUser && (item.createdBy === currentUser.uid || isAdmin);
+}
+
+// ============================================================
+// SCREENS
+// ============================================================
+function showScreen(name) {
+  document.getElementById("authScreen").hidden = name !== "auth";
+  document.getElementById("onboardingScreen").hidden = name !== "onboarding";
+  document.getElementById("dashboardScreen").hidden = name !== "dashboard";
+}
+
+onAuthStateChanged(auth, async (user) => {
+  detachListeners();
+  if (!user) {
+    currentUser = null;
+    profile = null;
+    showScreen("auth");
+    return;
   }
-  return dates;
+  currentUser = user;
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    profile = snap.exists() ? snap.data() : null;
+  } catch (e) {
+    console.error(e);
+    profile = null;
+  }
+
+  if (!profile || !profile.schoolId) {
+    document.getElementById("onboardingUserLine").textContent =
+      `${user.displayName || user.email} 님, 반갑습니다.`;
+    showScreen("onboarding");
+    return;
+  }
+
+  schoolId = profile.schoolId;
+  await enterSchool();
+  showScreen("dashboard");
+});
+
+document.getElementById("googleSignInBtn").addEventListener("click", async () => {
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (e) {
+    alert("로그인에 실패했습니다: " + e.message);
+  }
+});
+
+document.getElementById("signOutBtn").addEventListener("click", () => signOut(auth));
+document.getElementById("onboardingSignOut").addEventListener("click", () => signOut(auth));
+
+// ---------- onboarding tabs ----------
+document.querySelectorAll("[data-onb]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-onb]").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll("[data-onb-pane]").forEach((p) => (p.hidden = p.dataset.onbPane !== btn.dataset.onb));
+  });
+});
+
+document.getElementById("createSchoolBtn").addEventListener("click", async () => {
+  const name = document.getElementById("newSchoolNameInput").value.trim();
+  if (!name) return alert("학교 이름을 입력해주세요.");
+  const btn = document.getElementById("createSchoolBtn");
+  btn.disabled = true;
+  try {
+    const schoolRef = doc(collection(db, "schools"));
+    const code = generateInviteCode();
+    await setDoc(schoolRef, {
+      name,
+      inviteCode: code,
+      adminUids: [currentUser.uid],
+      createdAt: serverTimestamp(),
+    });
+    await setDoc(doc(db, "inviteCodes", code), { schoolId: schoolRef.id });
+    await setDoc(doc(db, "users", currentUser.uid), {
+      schoolId: schoolRef.id,
+      role: "admin",
+      displayName: currentUser.displayName || "",
+      email: currentUser.email || "",
+      photoURL: currentUser.photoURL || "",
+    });
+    location.reload();
+  } catch (e) {
+    alert("학교 생성에 실패했습니다: " + e.message);
+    btn.disabled = false;
+  }
+});
+
+document.getElementById("joinSchoolBtn").addEventListener("click", async () => {
+  const code = document.getElementById("joinCodeInput").value.trim().toUpperCase();
+  if (!code) return alert("초대코드를 입력해주세요.");
+  const btn = document.getElementById("joinSchoolBtn");
+  btn.disabled = true;
+  try {
+    const codeSnap = await getDoc(doc(db, "inviteCodes", code));
+    if (!codeSnap.exists()) {
+      alert("유효하지 않은 초대코드입니다.");
+      btn.disabled = false;
+      return;
+    }
+    const targetSchoolId = codeSnap.data().schoolId;
+    await setDoc(doc(db, "users", currentUser.uid), {
+      schoolId: targetSchoolId,
+      role: "member",
+      displayName: currentUser.displayName || "",
+      email: currentUser.email || "",
+      photoURL: currentUser.photoURL || "",
+    });
+    location.reload();
+  } catch (e) {
+    alert("참여에 실패했습니다: " + e.message);
+    btn.disabled = false;
+  }
+});
+
+// ============================================================
+// SCHOOL DATA (Firestore, realtime)
+// ============================================================
+async function enterSchool() {
+  const schoolSnap = await getDoc(doc(db, "schools", schoolId));
+  schoolMeta = schoolSnap.data();
+  isAdmin = (schoolMeta.adminUids || []).includes(currentUser.uid);
+
+  state.schoolName = schoolMeta.name || "";
+  els.schoolName.value = state.schoolName;
+  els.schoolName.disabled = !isAdmin;
+
+  document.getElementById("inviteBtn").hidden = !isAdmin;
+  document.getElementById("inviteCodeBox").textContent = schoolMeta.inviteCode || "------";
+  document.getElementById("userAvatar").src =
+    currentUser.photoURL || "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%23ccc'/></svg>";
+  document.getElementById("userName").textContent = currentUser.displayName || currentUser.email;
+
+  attachSchoolListeners();
 }
 
+function attachSchoolListeners() {
+  const cols = [
+    ["events", (arr) => (state.events = arr)],
+    ["duties", (arr) => (state.duties = arr)],
+    ["docs", (arr) => (state.docs = arr)],
+  ];
+  cols.forEach(([name, setter]) => {
+    const unsub = onSnapshot(
+      collection(db, "schools", schoolId, name),
+      (snap) => {
+        setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        renderAll();
+      },
+      (err) => console.error(`${name} listener error`, err)
+    );
+    unsubs.push(unsub);
+  });
+}
+
+function detachListeners() {
+  unsubs.forEach((u) => u());
+  unsubs = [];
+  state.events = [];
+  state.duties = [];
+  state.docs = [];
+}
+
+document.getElementById("schoolName").addEventListener("change", async (e) => {
+  if (!isAdmin || !schoolId) return;
+  const name = e.target.value.trim() || state.schoolName;
+  e.target.value = name;
+  try {
+    await updateDoc(doc(db, "schools", schoolId), { name });
+    state.schoolName = name;
+  } catch (err) {
+    alert("학교 이름 변경 실패: " + err.message);
+  }
+});
+
+// ---------- invite modal ----------
+const inviteModalOverlay = document.getElementById("inviteModalOverlay");
+document.getElementById("inviteBtn").addEventListener("click", () => (inviteModalOverlay.hidden = false));
+document.getElementById("inviteModalClose").addEventListener("click", () => (inviteModalOverlay.hidden = true));
+inviteModalOverlay.addEventListener("click", (e) => {
+  if (e.target === inviteModalOverlay) inviteModalOverlay.hidden = true;
+});
+document.getElementById("copyInviteBtn").addEventListener("click", async () => {
+  const code = document.getElementById("inviteCodeBox").textContent;
+  try {
+    await navigator.clipboard.writeText(code);
+    alert("초대코드가 복사되었습니다.");
+  } catch (e) {
+    alert("복사에 실패했습니다. 코드: " + code);
+  }
+});
+
+// ============================================================
+// helpers over item arrays
+// ============================================================
 function itemsForDate(dateStr) {
   const events = state.events.filter((e) => dateStr === e.date || (e.endDate && dateStr >= e.date && dateStr <= e.endDate));
   const duties = state.duties.filter((d) => dateStr === d.date || (d.endDate && dateStr >= d.date && dateStr <= d.endDate));
   const docs = state.docs.filter((d) => d.date === dateStr);
   return { events, duties, docs };
 }
-
 function monthRangeKey(y, m) {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
-
 function isInMonth(dateStr, y, m) {
   return dateStr.startsWith(monthRangeKey(y, m));
 }
-
 function itemOverlapsMonth(item, y, m) {
   const start = item.date;
   const end = item.endDate || item.date;
@@ -94,7 +305,6 @@ function itemOverlapsMonth(item, y, m) {
 // ============================================================
 // RENDERING
 // ============================================================
-
 const els = {
   schoolName: document.getElementById("schoolName"),
   yearSelect: document.getElementById("yearSelect"),
@@ -131,13 +341,13 @@ function populateYearMonthSelectors() {
 }
 
 function renderAll() {
-  els.schoolName.value = state.schoolName;
+  if (document.getElementById("dashboardScreen").hidden) return;
   populateYearMonthSelectors();
   els.calendarTitle.textContent = `${state.viewYear}년 ${state.viewMonth}월`;
   renderCalendar();
   renderSummary();
   renderSideLists();
-  saveState();
+  saveViewPref();
 }
 
 function renderCalendar() {
@@ -146,7 +356,7 @@ function renderCalendar() {
   grid.innerHTML = "";
 
   const firstOfMonth = new Date(y, m - 1, 1);
-  const startWeekday = firstOfMonth.getDay(); // 0 = Sun
+  const startWeekday = firstOfMonth.getDay();
   const daysInMonth = new Date(y, m, 0).getDate();
   const daysInPrevMonth = new Date(y, m - 1, 0).getDate();
 
@@ -230,14 +440,9 @@ function dateLabel(item) {
 function renderSideLists() {
   const { viewYear: y, viewMonth: m } = state;
 
-  // duties
-  const duties = state.duties
-    .filter((d) => itemOverlapsMonth(d, y, m))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const duties = state.duties.filter((d) => itemOverlapsMonth(d, y, m)).sort((a, b) => a.date.localeCompare(b.date));
   els.dutyList.innerHTML = "";
-  if (!duties.length) {
-    els.dutyList.innerHTML = `<div class="empty-note">등록된 복무가 없습니다.</div>`;
-  }
+  if (!duties.length) els.dutyList.innerHTML = `<div class="empty-note">등록된 복무가 없습니다.</div>`;
   duties.forEach((d) => {
     const item = document.createElement("div");
     item.className = "side-item";
@@ -248,15 +453,10 @@ function renderSideLists() {
     els.dutyList.appendChild(item);
   });
 
-  // docs
-  const docs = state.docs
-    .filter((d) => isInMonth(d.date, y, m))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const docsArr = state.docs.filter((d) => isInMonth(d.date, y, m)).sort((a, b) => a.date.localeCompare(b.date));
   els.docList.innerHTML = "";
-  if (!docs.length) {
-    els.docList.innerHTML = `<div class="empty-note">등록된 공문이 없습니다.</div>`;
-  }
-  docs.forEach((d) => {
+  if (!docsArr.length) els.docList.innerHTML = `<div class="empty-note">등록된 공문이 없습니다.</div>`;
+  docsArr.forEach((d) => {
     const item = document.createElement("div");
     item.className = `side-item status-${d.status}`;
     item.innerHTML = `
@@ -266,14 +466,9 @@ function renderSideLists() {
     els.docList.appendChild(item);
   });
 
-  // events
-  const events = state.events
-    .filter((e) => itemOverlapsMonth(e, y, m))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m)).sort((a, b) => a.date.localeCompare(b.date));
   els.eventList.innerHTML = "";
-  if (!events.length) {
-    els.eventList.innerHTML = `<div class="empty-note">등록된 행사가 없습니다.</div>`;
-  }
+  if (!events.length) els.eventList.innerHTML = `<div class="empty-note">등록된 행사가 없습니다.</div>`;
   events.forEach((e) => {
     const item = document.createElement("div");
     item.className = "side-item";
@@ -285,33 +480,36 @@ function renderSideLists() {
   });
 }
 
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
-
 // ============================================================
 // MODAL (add / edit)
 // ============================================================
-
 const modalOverlay = document.getElementById("modalOverlay");
 const modalTitle = document.getElementById("modalTitle");
-const tabBtns = document.querySelectorAll(".tab-btn");
+const tabBtns = document.querySelectorAll("#modalOverlay .tab-btn");
 const fieldGroups = document.querySelectorAll(".form-fields");
 const fDate = document.getElementById("f-date");
 const fEndDate = document.getElementById("f-endDate");
 const fEndDateLabel = document.getElementById("f-endDateLabel");
+const itemAuthorLine = document.getElementById("itemAuthorLine");
+
+const COLLECTION_BY_TYPE = { event: "events", duty: "duties", doc: "docs" };
 
 let currentType = "event";
-let editingId = null;
+let editingItem = null;
+
+function setFormDisabled(disabled) {
+  document.querySelectorAll("#modalOverlay input, #modalOverlay select, #modalOverlay textarea").forEach((el) => {
+    el.disabled = disabled;
+  });
+}
 
 function openModal(type, dateStr, existing) {
   currentType = type;
-  editingId = existing ? existing.id : null;
-  modalTitle.textContent = existing ? "일정 수정" : "일정 추가";
+  editingItem = existing || null;
+  modalTitle.textContent = existing ? "일정 상세" : "일정 추가";
 
   tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.type === type));
+  tabBtns.forEach((b) => (b.disabled = !!existing));
   fieldGroups.forEach((g) => (g.hidden = g.dataset.fields !== type));
   const showEndDate = type === "event" || type === "duty";
   fEndDate.hidden = !showEndDate;
@@ -322,7 +520,7 @@ function openModal(type, dateStr, existing) {
 
   document.getElementById("ev-title").value = "";
   document.getElementById("ev-memo").value = "";
-  document.getElementById("du-person").value = "";
+  document.getElementById("du-person").value = currentUser?.displayName || "";
   document.getElementById("du-role").value = "교사";
   document.getElementById("du-type").value = "출장";
   document.getElementById("du-title").value = "";
@@ -350,19 +548,34 @@ function openModal(type, dateStr, existing) {
     }
   }
 
-  document.getElementById("deleteBtn").hidden = !existing;
+  const editable = !existing || canEdit(existing);
+  setFormDisabled(!editable);
+  fDate.disabled = !editable || !!existing; // 날짜는 등록 후 수정 불가(단순화) — 새 항목으로 다시 등록 권장
+  fEndDate.disabled = !editable;
+
+  if (existing) {
+    itemAuthorLine.hidden = false;
+    itemAuthorLine.textContent = editable
+      ? `작성자: ${existing.createdByName || "알 수 없음"}`
+      : `작성자: ${existing.createdByName || "알 수 없음"} (작성자 또는 관리자만 수정할 수 있어요)`;
+  } else {
+    itemAuthorLine.hidden = true;
+  }
+
+  document.getElementById("deleteBtn").hidden = !existing || !editable;
+  document.getElementById("saveBtn").hidden = !editable;
   modalOverlay.hidden = false;
   closeDayPopover();
 }
 
 function closeModal() {
   modalOverlay.hidden = true;
-  editingId = null;
+  editingItem = null;
 }
 
 tabBtns.forEach((btn) => {
   btn.addEventListener("click", () => {
-    if (editingId) return; // don't allow switching type while editing
+    if (editingItem) return;
     currentType = btn.dataset.type;
     tabBtns.forEach((b) => b.classList.toggle("active", b === btn));
     fieldGroups.forEach((g) => (g.hidden = g.dataset.fields !== currentType));
@@ -378,60 +591,79 @@ modalOverlay.addEventListener("click", (e) => {
   if (e.target === modalOverlay) closeModal();
 });
 
-document.getElementById("saveBtn").addEventListener("click", () => {
+document.getElementById("saveBtn").addEventListener("click", async () => {
   const date = fDate.value;
-  if (!date) {
-    alert("날짜를 선택해주세요.");
-    return;
-  }
-  const endDate = fEndDate.hidden ? undefined : (fEndDate.value || undefined);
+  if (!date) return alert("날짜를 선택해주세요.");
+  const endDate = fEndDate.hidden ? null : fEndDate.value || null;
+  const colName = COLLECTION_BY_TYPE[currentType];
+  const saveBtn = document.getElementById("saveBtn");
 
+  let payload;
   if (currentType === "event") {
     const title = document.getElementById("ev-title").value.trim();
     if (!title) return alert("행사명을 입력해주세요.");
-    const memo = document.getElementById("ev-memo").value.trim();
-    upsert(state.events, { id: editingId || uid(), date, endDate, title, memo });
+    payload = { date, endDate, title, memo: document.getElementById("ev-memo").value.trim() };
   } else if (currentType === "duty") {
     const person = document.getElementById("du-person").value.trim();
     if (!person) return alert("대상자를 입력해주세요.");
-    const role = document.getElementById("du-role").value;
-    const type = document.getElementById("du-type").value;
-    const title = document.getElementById("du-title").value.trim();
-    const memo = document.getElementById("du-memo").value.trim();
-    upsert(state.duties, { id: editingId || uid(), date, endDate, person, role, type, title, memo });
-  } else if (currentType === "doc") {
+    payload = {
+      date, endDate,
+      person,
+      role: document.getElementById("du-role").value,
+      type: document.getElementById("du-type").value,
+      title: document.getElementById("du-title").value.trim(),
+      memo: document.getElementById("du-memo").value.trim(),
+    };
+  } else {
     const title = document.getElementById("doc-title").value.trim();
     if (!title) return alert("공문 제목을 입력해주세요.");
-    const sender = document.getElementById("doc-sender").value.trim();
-    const status = document.getElementById("doc-status").value;
-    const memo = document.getElementById("doc-memo").value.trim();
-    upsert(state.docs, { id: editingId || uid(), date, title, sender, status, memo });
+    payload = {
+      date,
+      title,
+      sender: document.getElementById("doc-sender").value.trim(),
+      status: document.getElementById("doc-status").value,
+      memo: document.getElementById("doc-memo").value.trim(),
+    };
   }
 
-  closeModal();
-  renderAll();
+  saveBtn.disabled = true;
+  try {
+    if (editingItem) {
+      await updateDoc(doc(db, "schools", schoolId, colName, editingItem.id), {
+        ...payload,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await addDoc(collection(db, "schools", schoolId, colName), {
+        ...payload,
+        createdBy: currentUser.uid,
+        createdByName: currentUser.displayName || currentUser.email || "",
+        createdAt: serverTimestamp(),
+      });
+    }
+    closeModal();
+  } catch (e) {
+    alert("저장에 실패했습니다: " + e.message);
+  } finally {
+    saveBtn.disabled = false;
+  }
 });
 
-document.getElementById("deleteBtn").addEventListener("click", () => {
-  if (!editingId) return;
+document.getElementById("deleteBtn").addEventListener("click", async () => {
+  if (!editingItem) return;
   if (!confirm("이 항목을 삭제할까요?")) return;
-  const arr = currentType === "event" ? state.events : currentType === "duty" ? state.duties : state.docs;
-  const idx = arr.findIndex((x) => x.id === editingId);
-  if (idx >= 0) arr.splice(idx, 1);
-  closeModal();
-  renderAll();
+  const colName = COLLECTION_BY_TYPE[currentType];
+  try {
+    await deleteDoc(doc(db, "schools", schoolId, colName, editingItem.id));
+    closeModal();
+  } catch (e) {
+    alert("삭제에 실패했습니다: " + e.message);
+  }
 });
 
-function upsert(arr, item) {
-  const idx = arr.findIndex((x) => x.id === item.id);
-  if (idx >= 0) arr[idx] = item;
-  else arr.push(item);
-}
-
 // ============================================================
-// DAY POPOVER (click a date to see all items + quick add)
+// DAY POPOVER
 // ============================================================
-
 const dayPopover = document.getElementById("dayPopover");
 
 function openDayPopover(cellEl, dateStr) {
@@ -489,20 +721,13 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// side-box "+ 추가" buttons
 document.querySelectorAll("[data-add]").forEach((btn) => {
   btn.addEventListener("click", () => openModal(btn.dataset.add, todayStr()));
 });
 
 // ============================================================
-// TOP TOOLBAR EVENTS
+// TOP TOOLBAR
 // ============================================================
-
-document.getElementById("schoolName").addEventListener("input", (e) => {
-  state.schoolName = e.target.value;
-  saveState();
-});
-
 document.getElementById("prevMonth").addEventListener("click", () => changeMonth(-1));
 document.getElementById("nextMonth").addEventListener("click", () => changeMonth(1));
 document.getElementById("todayBtn").addEventListener("click", () => {
@@ -531,50 +756,9 @@ els.monthSelect.addEventListener("change", (e) => {
   renderAll();
 });
 
-// ------------- export / import -------------
-document.getElementById("exportBtn").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `월중계획_백업_${todayStr()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
-document.getElementById("importBtn").addEventListener("click", () => {
-  document.getElementById("importFile").click();
-});
-document.getElementById("importFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      if (!data || typeof data !== "object") throw new Error("invalid");
-      state = {
-        schoolName: data.schoolName || "OO초등학교",
-        viewYear: data.viewYear || new Date().getFullYear(),
-        viewMonth: data.viewMonth || new Date().getMonth() + 1,
-        events: Array.isArray(data.events) ? data.events : [],
-        duties: Array.isArray(data.duties) ? data.duties : [],
-        docs: Array.isArray(data.docs) ? data.docs : [],
-      };
-      renderAll();
-      alert("데이터를 불러왔습니다.");
-    } catch (err) {
-      alert("올바른 백업 파일이 아닙니다.");
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = "";
-});
-
 // ============================================================
 // PRINT VIEW
 // ============================================================
-
 document.getElementById("printBtn").addEventListener("click", () => {
   buildPrintTable();
   window.print();
@@ -633,8 +817,3 @@ function buildPrintTable() {
     tbody.appendChild(tr);
   }
 }
-
-// ============================================================
-// INIT
-// ============================================================
-renderAll();
