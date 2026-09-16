@@ -9,6 +9,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -97,6 +99,31 @@ function showScreen(name) {
   document.getElementById("dashboardScreen").hidden = name !== "dashboard";
 }
 
+const AUTH_ERROR_MESSAGES = {
+  "auth/unauthorized-domain": "이 접속 주소가 아직 로그인 허용 목록에 없습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > 설정 > 승인된 도메인)",
+  "auth/operation-not-allowed": "구글 로그인이 아직 켜져 있지 않습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > Sign-in method > Google 사용 설정)",
+  "auth/popup-blocked": "브라우저가 팝업을 차단해서 다른 방식으로 다시 시도합니다...",
+  "auth/cancelled-popup-request": "브라우저가 팝업을 차단해서 다른 방식으로 다시 시도합니다...",
+  "auth/network-request-failed": "네트워크 연결을 확인해주세요.",
+};
+
+function showAuthError(message) {
+  const box = document.getElementById("authErrorBox");
+  if (!message) {
+    box.hidden = true;
+    box.textContent = "";
+    return;
+  }
+  box.hidden = false;
+  box.textContent = message;
+}
+
+// 리디렉션 로그인에서 돌아온 경우 처리 (팝업이 막힌 브라우저를 위한 대체 경로)
+getRedirectResult(auth).catch((e) => {
+  console.error("redirect sign-in error", e);
+  showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
+});
+
 onAuthStateChanged(auth, async (user) => {
   detachListeners();
   if (!user) {
@@ -106,6 +133,7 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   currentUser = user;
+  showAuthError(null);
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
     profile = snap.exists() ? snap.data() : null;
@@ -127,10 +155,23 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 document.getElementById("googleSignInBtn").addEventListener("click", async () => {
+  showAuthError(null);
+  const provider = new GoogleAuthProvider();
   try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    await signInWithPopup(auth, provider);
   } catch (e) {
-    alert("로그인에 실패했습니다: " + e.message);
+    if (e.code === "auth/popup-blocked" || e.code === "auth/cancelled-popup-request") {
+      showAuthError(AUTH_ERROR_MESSAGES[e.code] || "팝업 로그인이 막혀 다른 방식으로 다시 시도합니다...");
+      try {
+        await signInWithRedirect(auth, provider);
+      } catch (e2) {
+        showAuthError(AUTH_ERROR_MESSAGES[e2.code] || ("로그인에 실패했습니다: " + e2.message));
+      }
+    } else if (e.code === "auth/popup-closed-by-user") {
+      // 사용자가 스스로 팝업을 닫은 경우 — 별도 안내 없이 조용히 무시
+    } else {
+      showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
+    }
   }
 });
 
