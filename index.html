@@ -6,20 +6,17 @@
 <title>월중계획 대시보드</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>" />
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-<link rel="stylesheet" href="style.css?v=3" />
+<link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
 
-<!-- ===================== LOGIN SCREEN ===================== -->
+<!-- ===================== LOADING SCREEN ===================== -->
 <div id="authScreen" class="center-screen" hidden>
   <div class="auth-card">
     <div class="auth-logo">📅</div>
     <h1>월중계획 대시보드</h1>
     <p class="auth-desc">우리 학교 행사 · 복무(출장·연수) · 공문 보고를<br />구성원이 함께 입력하고 확인하는 공간입니다.</p>
-    <button id="googleSignInBtn" class="btn btn-google">
-      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4c-7.7 0-14.4 4.4-17.7 10.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-1.8 14.3-5l-6.6-5.4C29.6 35.3 26.9 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.2 5.5l6.6 5.4C40.9 36.4 44 30.8 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
-      구글 계정으로 로그인
-    </button>
+    <p class="auth-desc" style="margin-bottom:0">불러오는 중입니다...</p>
     <p id="authErrorBox" class="auth-error" hidden></p>
   </div>
 </div>
@@ -28,20 +25,25 @@
 <div id="onboardingScreen" class="center-screen" hidden>
   <div class="auth-card onboarding-card">
     <h1>학교 워크스페이스 연결</h1>
-    <p class="auth-desc" id="onboardingUserLine"></p>
+    <p class="auth-desc">참여코드를 아는 학교 구성원만 데이터에 접근할 수 있어요.</p>
+
+    <div class="form-row">
+      <label>이름</label>
+      <input type="text" id="nameInput" placeholder="예) 홍길동" />
+    </div>
 
     <div class="onboarding-tabs">
-      <button class="tab-btn active" data-onb="join">초대코드로 참여</button>
+      <button class="tab-btn active" data-onb="join">참여코드로 참여</button>
       <button class="tab-btn" data-onb="create">학교 새로 만들기</button>
     </div>
 
     <div class="onboarding-pane" data-onb-pane="join">
       <div class="form-row">
-        <label>초대코드</label>
+        <label>참여코드</label>
         <input type="text" id="joinCodeInput" placeholder="예) AB12CD" style="text-transform:uppercase" maxlength="8" />
       </div>
       <button id="joinSchoolBtn" class="btn btn-primary" style="width:100%">참여하기</button>
-      <p class="onboarding-hint">교무부장 선생님께 받은 초대코드를 입력하세요.</p>
+      <p class="onboarding-hint">교무부장 선생님께 받은 참여코드를 입력하세요.</p>
     </div>
 
     <div class="onboarding-pane" data-onb-pane="create" hidden>
@@ -50,10 +52,10 @@
         <input type="text" id="newSchoolNameInput" placeholder="예) OO초등학교" />
       </div>
       <button id="createSchoolBtn" class="btn btn-primary" style="width:100%">학교 만들고 관리자 되기</button>
-      <p class="onboarding-hint">학교를 처음 등록하는 교무부장 선생님만 사용하세요. 생성 후 초대코드가 발급됩니다.</p>
+      <p class="onboarding-hint">학교를 처음 등록하는 교무부장 선생님만 사용하세요. 생성 후 참여코드가 발급됩니다.</p>
     </div>
 
-    <button id="onboardingSignOut" class="btn btn-sm" style="margin-top:14px">다른 계정으로 로그인</button>
+    <button id="onboardingSignOut" class="btn btn-sm" style="margin-top:14px">처음부터 다시 시작</button>
   </div>
 </div>
 
@@ -79,7 +81,7 @@
       <div class="divider"></div>
       <button id="printBtn" class="btn btn-primary">🖨 월중계획 인쇄</button>
       <div class="divider"></div>
-      <button id="inviteBtn" class="btn" hidden>초대코드</button>
+      <button id="inviteBtn" class="btn" hidden>참여코드</button>
       <div class="user-chip">
         <img id="userAvatar" class="user-avatar" src="" alt="" />
         <span id="userName" class="user-name"></span>
@@ -166,11 +168,11 @@
 <div id="inviteModalOverlay" class="modal-overlay" hidden>
   <div class="modal" style="width:360px">
     <div class="modal-header">
-      <h3>구성원 초대코드</h3>
+      <h3>구성원 참여코드</h3>
       <button id="inviteModalClose" class="btn icon-btn">✕</button>
     </div>
     <div class="modal-body">
-      <p class="onboarding-hint">이 코드를 학교 구성원에게 전달하면, 로그인 후 "초대코드로 참여"에서 입력해 같은 학교 데이터에 접속할 수 있습니다.</p>
+      <p class="onboarding-hint">이 코드를 학교 구성원에게 전달하면, 로그인 후 "참여코드로 참여"에서 입력해 같은 학교 데이터에 접속할 수 있습니다.</p>
       <div class="invite-code-box" id="inviteCodeBox">------</div>
       <button id="copyInviteBtn" class="btn" style="width:100%">코드 복사</button>
     </div>
@@ -306,6 +308,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=4"></script>
+<script type="module" src="app.js?v=5"></script>
 </body>
 </html>

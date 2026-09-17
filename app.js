@@ -7,9 +7,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
   getAuth,
-  GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInAnonymously,
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -99,10 +97,8 @@ function showScreen(name) {
 }
 
 const AUTH_ERROR_MESSAGES = {
-  "auth/unauthorized-domain": "이 접속 주소가 아직 로그인 허용 목록에 없습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > 설정 > 승인된 도메인)",
-  "auth/operation-not-allowed": "구글 로그인이 아직 켜져 있지 않습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > Sign-in method > Google 사용 설정)",
-  "auth/popup-blocked": "브라우저가 팝업을 차단해서 다른 방식으로 다시 시도합니다...",
-  "auth/cancelled-popup-request": "브라우저가 팝업을 차단해서 다른 방식으로 다시 시도합니다...",
+  "auth/operation-not-allowed": "이 앱의 접속 방식이 아직 관리자 설정에서 켜져 있지 않습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > Sign-in method > 익명 사용 설정)",
+  "auth/admin-restricted-operation": "이 앱의 접속 방식이 아직 관리자 설정에서 켜져 있지 않습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > Sign-in method > 익명 사용 설정)",
   "auth/network-request-failed": "네트워크 연결을 확인해주세요.",
 };
 
@@ -117,18 +113,21 @@ function showAuthError(message) {
   box.textContent = message;
 }
 
-// 리디렉션 로그인에서 돌아온 경우 처리
-getRedirectResult(auth).catch((e) => {
-  console.error("[auth] getRedirectResult error:", e.code, e.message);
-  showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
-});
-
+// 구글 로그인 대신 "익명 로그인"을 사용한다: 브라우저가 조용히 자동으로 고유 접속 ID를
+// 하나 발급받는 방식이라 팝업/리디렉션/확장 프로그램 문제와 무관하게 항상 동작한다.
+// 신원 확인은 하지 않는 대신, 참여코드를 아는 사람만 학교 데이터에 접근할 수 있다.
 onAuthStateChanged(auth, async (user) => {
   detachListeners();
   if (!user) {
     currentUser = null;
     profile = null;
     showScreen("auth");
+    try {
+      await signInAnonymously(auth);
+    } catch (e) {
+      console.error("[auth] signInAnonymously failed:", e.code, e.message);
+      showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("접속에 실패했습니다: " + e.message));
+    }
     return;
   }
   currentUser = user;
@@ -142,8 +141,6 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   if (!profile || !profile.schoolId) {
-    document.getElementById("onboardingUserLine").textContent =
-      `${user.displayName || user.email} 님, 반갑습니다.`;
     showScreen("onboarding");
     return;
   }
@@ -153,21 +150,12 @@ onAuthStateChanged(auth, async (user) => {
   showScreen("dashboard");
 });
 
-document.getElementById("googleSignInBtn").addEventListener("click", async () => {
-  showAuthError(null);
-  const provider = new GoogleAuthProvider();
-  // 팝업 방식은 브라우저의 제3자 쿠키 차단·COOP 정책 등으로 "열렸다 바로 닫힘" 증상이
-  // 흔히 발생해 신뢰할 수 없다고 판단, 전체 페이지 이동 방식(리디렉션)만 사용한다.
-  try {
-    await signInWithRedirect(auth, provider);
-  } catch (e) {
-    console.error("[auth] signInWithRedirect threw:", e.code, e.message);
-    showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
-  }
-});
-
-document.getElementById("signOutBtn").addEventListener("click", () => signOut(auth));
-document.getElementById("onboardingSignOut").addEventListener("click", () => signOut(auth));
+function resetIdentity() {
+  if (!confirm("계속할까요? 이 브라우저의 참여 정보가 초기화되어, 지금까지 본인이 작성한 항목을 더 이상 수정·삭제할 수 없게 됩니다. (항목 자체는 남아있습니다)")) return;
+  signOut(auth);
+}
+document.getElementById("signOutBtn").addEventListener("click", resetIdentity);
+document.getElementById("onboardingSignOut").addEventListener("click", resetIdentity);
 
 // ---------- onboarding tabs ----------
 document.querySelectorAll("[data-onb]").forEach((btn) => {
@@ -177,7 +165,13 @@ document.querySelectorAll("[data-onb]").forEach((btn) => {
   });
 });
 
+function getEnteredName() {
+  return document.getElementById("nameInput").value.trim();
+}
+
 document.getElementById("createSchoolBtn").addEventListener("click", async () => {
+  const displayName = getEnteredName();
+  if (!displayName) return alert("이름을 입력해주세요.");
   const name = document.getElementById("newSchoolNameInput").value.trim();
   if (!name) return alert("학교 이름을 입력해주세요.");
   const btn = document.getElementById("createSchoolBtn");
@@ -195,9 +189,7 @@ document.getElementById("createSchoolBtn").addEventListener("click", async () =>
     await setDoc(doc(db, "users", currentUser.uid), {
       schoolId: schoolRef.id,
       role: "admin",
-      displayName: currentUser.displayName || "",
-      email: currentUser.email || "",
-      photoURL: currentUser.photoURL || "",
+      displayName,
     });
     location.reload();
   } catch (e) {
@@ -207,14 +199,16 @@ document.getElementById("createSchoolBtn").addEventListener("click", async () =>
 });
 
 document.getElementById("joinSchoolBtn").addEventListener("click", async () => {
+  const displayName = getEnteredName();
+  if (!displayName) return alert("이름을 입력해주세요.");
   const code = document.getElementById("joinCodeInput").value.trim().toUpperCase();
-  if (!code) return alert("초대코드를 입력해주세요.");
+  if (!code) return alert("참여코드를 입력해주세요.");
   const btn = document.getElementById("joinSchoolBtn");
   btn.disabled = true;
   try {
     const codeSnap = await getDoc(doc(db, "inviteCodes", code));
     if (!codeSnap.exists()) {
-      alert("유효하지 않은 초대코드입니다.");
+      alert("유효하지 않은 참여코드입니다.");
       btn.disabled = false;
       return;
     }
@@ -222,9 +216,7 @@ document.getElementById("joinSchoolBtn").addEventListener("click", async () => {
     await setDoc(doc(db, "users", currentUser.uid), {
       schoolId: targetSchoolId,
       role: "member",
-      displayName: currentUser.displayName || "",
-      email: currentUser.email || "",
-      photoURL: currentUser.photoURL || "",
+      displayName,
     });
     location.reload();
   } catch (e) {
@@ -248,8 +240,8 @@ async function enterSchool() {
   document.getElementById("inviteBtn").hidden = !isAdmin;
   document.getElementById("inviteCodeBox").textContent = schoolMeta.inviteCode || "------";
   document.getElementById("userAvatar").src =
-    currentUser.photoURL || "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%23ccc'/></svg>";
-  document.getElementById("userName").textContent = currentUser.displayName || currentUser.email;
+    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%23ccc'/></svg>";
+  document.getElementById("userName").textContent = profile?.displayName || "이름없음";
 
   attachSchoolListeners();
 }
@@ -304,7 +296,7 @@ document.getElementById("copyInviteBtn").addEventListener("click", async () => {
   const code = document.getElementById("inviteCodeBox").textContent;
   try {
     await navigator.clipboard.writeText(code);
-    alert("초대코드가 복사되었습니다.");
+    alert("참여코드가 복사되었습니다.");
   } catch (e) {
     alert("복사에 실패했습니다. 코드: " + code);
   }
@@ -552,7 +544,7 @@ function openModal(type, dateStr, existing) {
 
   document.getElementById("ev-title").value = "";
   document.getElementById("ev-memo").value = "";
-  document.getElementById("du-person").value = currentUser?.displayName || "";
+  document.getElementById("du-person").value = profile?.displayName || "";
   document.getElementById("du-role").value = "교사";
   document.getElementById("du-type").value = "출장";
   document.getElementById("du-title").value = "";
@@ -669,7 +661,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
       await addDoc(collection(db, "schools", schoolId, colName), {
         ...payload,
         createdBy: currentUser.uid,
-        createdByName: currentUser.displayName || currentUser.email || "",
+        createdByName: profile?.displayName || "이름없음",
         createdAt: serverTimestamp(),
       });
     }
