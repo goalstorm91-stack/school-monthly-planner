@@ -290,9 +290,22 @@ document.getElementById("copyInviteBtn").addEventListener("click", async () => {
 // ============================================================
 // helpers over item arrays
 // ============================================================
+function byTime(a, b) {
+  if (!a.time && !b.time) return 0;
+  if (!a.time) return 1; // 시간 없는 항목은 뒤로
+  if (!b.time) return -1;
+  return a.time.localeCompare(b.time);
+}
+function timeLabel(item) {
+  return item.time ? `${item.time} ` : "";
+}
 function itemsForDate(dateStr) {
-  const events = state.events.filter((e) => dateStr === e.date || (e.endDate && dateStr >= e.date && dateStr <= e.endDate));
-  const duties = state.duties.filter((d) => dateStr === d.date || (d.endDate && dateStr >= d.date && dateStr <= d.endDate));
+  const events = state.events
+    .filter((e) => dateStr === e.date || (e.endDate && dateStr >= e.date && dateStr <= e.endDate))
+    .sort(byTime);
+  const duties = state.duties
+    .filter((d) => dateStr === d.date || (d.endDate && dateStr >= d.date && dateStr <= d.endDate))
+    .sort(byTime);
   const docs = state.docs.filter((d) => d.date === dateStr);
   return { events, duties, docs };
 }
@@ -399,8 +412,8 @@ function renderCalendar() {
     itemsWrap.className = "day-items";
     const { events, duties, docs } = itemsForDate(dateStr);
     const chips = [
-      ...events.map((e) => ({ cls: "event", label: e.title })),
-      ...duties.map((d) => ({ cls: "duty", label: `${d.person} ${d.type}` })),
+      ...events.map((e) => ({ cls: "event", label: `${timeLabel(e)}${e.title}` })),
+      ...duties.map((d) => ({ cls: "duty", label: `${timeLabel(d)}${d.person} ${d.type}` })),
       ...docs.map((d) => ({ cls: "doc", label: d.title })),
     ];
     const maxShow = 3;
@@ -440,16 +453,16 @@ function renderSummary() {
 }
 
 function dateLabel(item) {
-  if (item.endDate && item.endDate !== item.date) {
-    return `${item.date.slice(5)} ~ ${item.endDate.slice(5)}`;
-  }
-  return item.date.slice(5);
+  const base = item.endDate && item.endDate !== item.date
+    ? `${item.date.slice(5)} ~ ${item.endDate.slice(5)}`
+    : item.date.slice(5);
+  return item.time ? `${base} ${item.time}` : base;
 }
 
 function renderSideLists() {
   const { viewYear: y, viewMonth: m } = state;
 
-  const duties = state.duties.filter((d) => itemOverlapsMonth(d, y, m)).sort((a, b) => a.date.localeCompare(b.date));
+  const duties = state.duties.filter((d) => itemOverlapsMonth(d, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.dutyList.innerHTML = "";
   if (!duties.length) els.dutyList.innerHTML = `<div class="empty-note">등록된 복무가 없습니다.</div>`;
   duties.forEach((d) => {
@@ -475,7 +488,7 @@ function renderSideLists() {
     els.docList.appendChild(item);
   });
 
-  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m)).sort((a, b) => a.date.localeCompare(b.date));
+  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.eventList.innerHTML = "";
   if (!events.length) els.eventList.innerHTML = `<div class="empty-note">등록된 행사가 없습니다.</div>`;
   events.forEach((e) => {
@@ -499,6 +512,8 @@ const fieldGroups = document.querySelectorAll(".form-fields");
 const fDate = document.getElementById("f-date");
 const fEndDate = document.getElementById("f-endDate");
 const fEndDateLabel = document.getElementById("f-endDateLabel");
+const fTime = document.getElementById("f-time");
+const fTimeRow = document.getElementById("f-timeRow");
 const itemAuthorLine = document.getElementById("itemAuthorLine");
 
 const COLLECTION_BY_TYPE = { event: "events", duty: "duties", doc: "docs" };
@@ -517,9 +532,11 @@ function openModal(type, dateStr, existing) {
   const showEndDate = type === "event" || type === "duty";
   fEndDate.hidden = !showEndDate;
   fEndDateLabel.hidden = !showEndDate;
+  fTimeRow.hidden = !showEndDate;
 
   fDate.value = dateStr || todayStr();
   fEndDate.value = existing?.endDate || "";
+  fTime.value = existing?.time || "";
 
   document.getElementById("ev-title").value = "";
   document.getElementById("ev-memo").value = "";
@@ -579,6 +596,7 @@ tabBtns.forEach((btn) => {
     const showEndDate = currentType === "event" || currentType === "duty";
     fEndDate.hidden = !showEndDate;
     fEndDateLabel.hidden = !showEndDate;
+    fTimeRow.hidden = !showEndDate;
   });
 });
 
@@ -592,6 +610,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
   const date = fDate.value;
   if (!date) return alert("날짜를 선택해주세요.");
   const endDate = fEndDate.hidden ? null : fEndDate.value || null;
+  const time = fTimeRow.hidden ? null : fTime.value || null;
   const colName = COLLECTION_BY_TYPE[currentType];
   const saveBtn = document.getElementById("saveBtn");
 
@@ -599,12 +618,12 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
   if (currentType === "event") {
     const title = document.getElementById("ev-title").value.trim();
     if (!title) return alert("행사명을 입력해주세요.");
-    payload = { date, endDate, title, memo: document.getElementById("ev-memo").value.trim() };
+    payload = { date, endDate, time, title, memo: document.getElementById("ev-memo").value.trim() };
   } else if (currentType === "duty") {
     const person = document.getElementById("du-person").value.trim();
     if (!person) return alert("대상자를 입력해주세요.");
     payload = {
-      date, endDate,
+      date, endDate, time,
       person,
       role: document.getElementById("du-role").value,
       type: document.getElementById("du-type").value,
@@ -675,8 +694,8 @@ function openDayPopover(cellEl, dateStr) {
     </div>`;
 
   const rows = [
-    ...events.map((e) => ({ type: "event", cls: "event", label: e.title, item: e })),
-    ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${d.person}(${d.role}) ${d.type} - ${d.title || ""}`, item: d })),
+    ...events.map((e) => ({ type: "event", cls: "event", label: `${timeLabel(e)}${e.title}`, item: e })),
+    ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${timeLabel(d)}${d.person}(${d.role}) ${d.type} - ${d.title || ""}`, item: d })),
     ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${d.title} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
   ];
   if (!rows.length) {
@@ -791,12 +810,12 @@ function buildPrintTable() {
 
     const tdEvent = document.createElement("td");
     tdEvent.className = "col-event";
-    tdEvent.innerHTML = events.map((e) => `<div class="print-item">${escapeHtml(e.title)}${e.memo ? ` (${escapeHtml(e.memo)})` : ""}</div>`).join("") || "";
+    tdEvent.innerHTML = events.map((e) => `<div class="print-item">${escapeHtml(timeLabel(e))}${escapeHtml(e.title)}${e.memo ? ` (${escapeHtml(e.memo)})` : ""}</div>`).join("") || "";
 
     const tdDuty = document.createElement("td");
     tdDuty.className = "col-duty";
     tdDuty.innerHTML = duties
-      .map((d2) => `<div class="print-item">${escapeHtml(d2.person)}(${escapeHtml(d2.role)}) ${escapeHtml(d2.type)}${d2.title ? ` - ${escapeHtml(d2.title)}` : ""}</div>`)
+      .map((d2) => `<div class="print-item">${escapeHtml(timeLabel(d2))}${escapeHtml(d2.person)}(${escapeHtml(d2.role)}) ${escapeHtml(d2.type)}${d2.title ? ` - ${escapeHtml(d2.title)}` : ""}</div>`)
       .join("") || "";
 
     const tdDoc = document.createElement("td");
