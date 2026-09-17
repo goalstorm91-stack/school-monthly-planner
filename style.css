@@ -321,11 +321,12 @@ body {
 /* ---------- Auth / onboarding screens ---------- */
 .center-screen {
   min-height: 100vh;
-  display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
 }
+.center-screen:not([hidden]) { display: flex; }
+.center-screen[hidden] { display: none; }
 .auth-card {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
