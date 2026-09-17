@@ -1,73 +1,35 @@
 rules_version = '2';
 
+// 별도 로그인 없이 "참여코드"만으로 학교 데이터에 접근하는 구조.
+// schoolId(무작위 문서 ID)와 참여코드를 모르면 어떤 데이터에도 접근할 수 없고,
+// 컬렉션 전체를 나열(list)하는 것은 막아 다른 학교 목록을 훑어볼 수 없게 한다.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function myProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function mySchoolId() {
-      return myProfile().schoolId;
-    }
-
-    function isSchoolAdmin(schoolId) {
-      return request.auth.uid in
-        get(/databases/$(database)/documents/schools/$(schoolId)).data.adminUids;
-    }
-
-    function inSchool(schoolId) {
-      return signedIn() && mySchoolId() == schoolId;
-    }
-
-    // ---- user profile: schoolId, role, displayName, email ----
-    match /users/{uid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && request.auth.uid == uid;
-      allow delete: if false;
-    }
-
-    // ---- invite code -> schoolId lookup (created together with a school) ----
+    // code -> schoolId 조회 (참여코드를 이미 아는 사람만 의미 있게 사용 가능)
     match /inviteCodes/{code} {
-      allow get: if signedIn();
+      allow get: if true;
       allow list: if false;
-      allow create: if signedIn();
+      allow create: if true; // 학교를 새로 만들 때 함께 생성
       allow update, delete: if false;
     }
 
-    // ---- school workspace ----
+    // 학교 워크스페이스: schoolId를 아는 사람만 개별 조회 가능, 전체 나열은 불가
     match /schools/{schoolId} {
-      allow create: if signedIn()
-        && request.resource.data.adminUids is list
-        && request.auth.uid in request.resource.data.adminUids;
-      allow read: if inSchool(schoolId);
-      allow update: if inSchool(schoolId) && isSchoolAdmin(schoolId);
+      allow get: if true;
+      allow list: if false;
+      allow create: if true;
+      allow update: if true;
       allow delete: if false;
 
       match /events/{id} {
-        allow read: if inSchool(schoolId);
-        allow create: if inSchool(schoolId) && request.resource.data.createdBy == request.auth.uid;
-        allow update, delete: if inSchool(schoolId)
-          && (resource.data.createdBy == request.auth.uid || isSchoolAdmin(schoolId));
+        allow read, write: if true;
       }
-
       match /duties/{id} {
-        allow read: if inSchool(schoolId);
-        allow create: if inSchool(schoolId) && request.resource.data.createdBy == request.auth.uid;
-        allow update, delete: if inSchool(schoolId)
-          && (resource.data.createdBy == request.auth.uid || isSchoolAdmin(schoolId));
+        allow read, write: if true;
       }
-
       match /docs/{id} {
-        allow read: if inSchool(schoolId);
-        allow create: if inSchool(schoolId) && request.resource.data.createdBy == request.auth.uid;
-        allow update, delete: if inSchool(schoolId)
-          && (resource.data.createdBy == request.auth.uid || isSchoolAdmin(schoolId));
+        allow read, write: if true;
       }
     }
   }

@@ -1,16 +1,10 @@
 /* ============================================================
-   초등학교 교무부장 월중계획 대시보드 (다중 학교 / 구성원 로그인판)
-   - 구글 로그인(Firebase Auth) + 학교별 실시간 공유 데이터(Firestore)
+   초등학교 교무부장 월중계획 대시보드 (다중 학교 / 참여코드 전용판)
+   - 로그인 없이 "참여코드"만으로 학교별 실시간 공유 데이터(Firestore)에 접근
    - 행사 / 복무(출장·연수 등) / 공문 세 가지 항목을 날짜별로 관리
    ============================================================ */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged,
-  signOut,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore,
   doc,
@@ -26,10 +20,10 @@ import {
 import { firebaseConfig } from "./firebase-config.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 
 const VIEW_PREF_KEY = "schoolMonthlyPlanner.viewPref";
+const LOCAL_KEY = "schoolMonthlyPlanner.local"; // { schoolId, displayName }
 
 function todayStr() {
   return formatDate(new Date());
@@ -60,6 +54,21 @@ function loadViewPref() {
 function saveViewPref() {
   localStorage.setItem(VIEW_PREF_KEY, JSON.stringify({ viewYear: state.viewYear, viewMonth: state.viewMonth }));
 }
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { schoolId: null, displayName: "" };
+}
+function saveLocal(patch) {
+  const merged = { ...loadLocal(), ...patch };
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(merged));
+  return merged;
+}
+function clearLocalSchool() {
+  saveLocal({ schoolId: null });
+}
 
 const INVITE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 혼동되는 O/0, I/1 제외
 function generateInviteCode(len = 6) {
@@ -76,16 +85,10 @@ const state = {
   docs: [],
 };
 
-let currentUser = null;
-let profile = null; // { schoolId, role, displayName, email }
 let schoolId = null;
-let schoolMeta = null; // { name, inviteCode, adminUids }
-let isAdmin = false;
+let schoolMeta = null; // { name, inviteCode }
+let localName = ""; // 이 브라우저에서 입력한 이름 (신원 확인용 아님, 표시용)
 let unsubs = [];
-
-function canEdit(item) {
-  return !!currentUser && (item.createdBy === currentUser.uid || isAdmin);
-}
 
 // ============================================================
 // SCREENS
@@ -95,12 +98,6 @@ function showScreen(name) {
   document.getElementById("onboardingScreen").hidden = name !== "onboarding";
   document.getElementById("dashboardScreen").hidden = name !== "dashboard";
 }
-
-const AUTH_ERROR_MESSAGES = {
-  "auth/operation-not-allowed": "이 앱의 접속 방식이 아직 관리자 설정에서 켜져 있지 않습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > Sign-in method > 익명 사용 설정)",
-  "auth/admin-restricted-operation": "이 앱의 접속 방식이 아직 관리자 설정에서 켜져 있지 않습니다. 관리자에게 문의해주세요. (Firebase 콘솔 > Authentication > Sign-in method > 익명 사용 설정)",
-  "auth/network-request-failed": "네트워크 연결을 확인해주세요.",
-};
 
 function showAuthError(message) {
   const box = document.getElementById("authErrorBox");
@@ -113,49 +110,47 @@ function showAuthError(message) {
   box.textContent = message;
 }
 
-// 구글 로그인 대신 "익명 로그인"을 사용한다: 브라우저가 조용히 자동으로 고유 접속 ID를
-// 하나 발급받는 방식이라 팝업/리디렉션/확장 프로그램 문제와 무관하게 항상 동작한다.
-// 신원 확인은 하지 않는 대신, 참여코드를 아는 사람만 학교 데이터에 접근할 수 있다.
-onAuthStateChanged(auth, async (user) => {
-  detachListeners();
-  if (!user) {
-    currentUser = null;
-    profile = null;
-    showScreen("auth");
-    try {
-      await signInAnonymously(auth);
-    } catch (e) {
-      console.error("[auth] signInAnonymously failed:", e.code, e.message);
-      showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("접속에 실패했습니다: " + e.message));
-    }
-    return;
-  }
-  currentUser = user;
-  showAuthError(null);
-  try {
-    const snap = await getDoc(doc(db, "users", user.uid));
-    profile = snap.exists() ? snap.data() : null;
-  } catch (e) {
-    console.error(e);
-    profile = null;
-  }
+// 별도 로그인 없이, 이 브라우저에 저장된 schoolId가 있으면 바로 그 학교로 들어가고
+// 없으면 참여코드 입력 화면을 보여준다. 신원 확인이 없는 대신 참여코드를 아는
+// 사람만 해당 학교 데이터에 접근할 수 있다 (Firestore 보안 규칙으로 강제).
+async function init() {
+  const local = loadLocal();
+  localName = local.displayName || "";
+  document.getElementById("nameInput").value = localName;
 
-  if (!profile || !profile.schoolId) {
+  if (!local.schoolId) {
     showScreen("onboarding");
     return;
   }
 
-  schoolId = profile.schoolId;
-  await enterSchool();
-  showScreen("dashboard");
-});
-
-function resetIdentity() {
-  if (!confirm("계속할까요? 이 브라우저의 참여 정보가 초기화되어, 지금까지 본인이 작성한 항목을 더 이상 수정·삭제할 수 없게 됩니다. (항목 자체는 남아있습니다)")) return;
-  signOut(auth);
+  showScreen("auth");
+  try {
+    const schoolSnap = await getDoc(doc(db, "schools", local.schoolId));
+    if (!schoolSnap.exists()) {
+      clearLocalSchool();
+      showScreen("onboarding");
+      return;
+    }
+    schoolId = local.schoolId;
+    await enterSchool();
+    showScreen("dashboard");
+  } catch (e) {
+    console.error("[init] failed to load school:", e);
+    showScreen("onboarding");
+    showAuthError("학교 정보를 불러오지 못했습니다: " + e.message);
+  }
 }
-document.getElementById("signOutBtn").addEventListener("click", resetIdentity);
-document.getElementById("onboardingSignOut").addEventListener("click", resetIdentity);
+init();
+
+function leaveSchool() {
+  if (!confirm("이 학교에서 나갈까요? 참여코드를 다시 입력해야 이 학교 데이터에 접근할 수 있습니다.")) return;
+  detachListeners();
+  schoolId = null;
+  clearLocalSchool();
+  document.getElementById("nameInput").value = localName;
+  showScreen("onboarding");
+}
+document.getElementById("signOutBtn").addEventListener("click", leaveSchool);
 
 // ---------- onboarding tabs ----------
 document.querySelectorAll("[data-onb]").forEach((btn) => {
@@ -182,15 +177,10 @@ document.getElementById("createSchoolBtn").addEventListener("click", async () =>
     await setDoc(schoolRef, {
       name,
       inviteCode: code,
-      adminUids: [currentUser.uid],
       createdAt: serverTimestamp(),
     });
     await setDoc(doc(db, "inviteCodes", code), { schoolId: schoolRef.id });
-    await setDoc(doc(db, "users", currentUser.uid), {
-      schoolId: schoolRef.id,
-      role: "admin",
-      displayName,
-    });
+    saveLocal({ schoolId: schoolRef.id, displayName });
     location.reload();
   } catch (e) {
     alert("학교 생성에 실패했습니다: " + e.message);
@@ -213,11 +203,7 @@ document.getElementById("joinSchoolBtn").addEventListener("click", async () => {
       return;
     }
     const targetSchoolId = codeSnap.data().schoolId;
-    await setDoc(doc(db, "users", currentUser.uid), {
-      schoolId: targetSchoolId,
-      role: "member",
-      displayName,
-    });
+    saveLocal({ schoolId: targetSchoolId, displayName });
     location.reload();
   } catch (e) {
     alert("참여에 실패했습니다: " + e.message);
@@ -231,17 +217,16 @@ document.getElementById("joinSchoolBtn").addEventListener("click", async () => {
 async function enterSchool() {
   const schoolSnap = await getDoc(doc(db, "schools", schoolId));
   schoolMeta = schoolSnap.data();
-  isAdmin = (schoolMeta.adminUids || []).includes(currentUser.uid);
 
   state.schoolName = schoolMeta.name || "";
   els.schoolName.value = state.schoolName;
-  els.schoolName.disabled = !isAdmin;
+  els.schoolName.disabled = false;
 
-  document.getElementById("inviteBtn").hidden = !isAdmin;
+  document.getElementById("inviteBtn").hidden = false;
   document.getElementById("inviteCodeBox").textContent = schoolMeta.inviteCode || "------";
   document.getElementById("userAvatar").src =
     "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='12' fill='%23ccc'/></svg>";
-  document.getElementById("userName").textContent = profile?.displayName || "이름없음";
+  document.getElementById("userName").textContent = localName || "이름없음";
 
   attachSchoolListeners();
 }
@@ -274,7 +259,7 @@ function detachListeners() {
 }
 
 document.getElementById("schoolName").addEventListener("change", async (e) => {
-  if (!isAdmin || !schoolId) return;
+  if (!schoolId) return;
   const name = e.target.value.trim() || state.schoolName;
   e.target.value = name;
   try {
@@ -521,12 +506,6 @@ const COLLECTION_BY_TYPE = { event: "events", duty: "duties", doc: "docs" };
 let currentType = "event";
 let editingItem = null;
 
-function setFormDisabled(disabled) {
-  document.querySelectorAll("#modalOverlay input, #modalOverlay select, #modalOverlay textarea").forEach((el) => {
-    el.disabled = disabled;
-  });
-}
-
 function openModal(type, dateStr, existing) {
   currentType = type;
   editingItem = existing || null;
@@ -544,7 +523,7 @@ function openModal(type, dateStr, existing) {
 
   document.getElementById("ev-title").value = "";
   document.getElementById("ev-memo").value = "";
-  document.getElementById("du-person").value = profile?.displayName || "";
+  document.getElementById("du-person").value = localName || "";
   document.getElementById("du-role").value = "교사";
   document.getElementById("du-type").value = "출장";
   document.getElementById("du-title").value = "";
@@ -572,22 +551,16 @@ function openModal(type, dateStr, existing) {
     }
   }
 
-  const editable = !existing || canEdit(existing);
-  setFormDisabled(!editable);
-  fDate.disabled = !editable || !!existing; // 날짜는 등록 후 수정 불가(단순화) — 새 항목으로 다시 등록 권장
-  fEndDate.disabled = !editable;
+  fDate.disabled = !!existing; // 날짜는 등록 후 수정 불가(단순화) — 새 항목으로 다시 등록 권장
 
   if (existing) {
     itemAuthorLine.hidden = false;
-    itemAuthorLine.textContent = editable
-      ? `작성자: ${existing.createdByName || "알 수 없음"}`
-      : `작성자: ${existing.createdByName || "알 수 없음"} (작성자 또는 관리자만 수정할 수 있어요)`;
+    itemAuthorLine.textContent = `작성자: ${existing.createdByName || "알 수 없음"}`;
   } else {
     itemAuthorLine.hidden = true;
   }
 
-  document.getElementById("deleteBtn").hidden = !existing || !editable;
-  document.getElementById("saveBtn").hidden = !editable;
+  document.getElementById("deleteBtn").hidden = !existing;
   modalOverlay.hidden = false;
   closeDayPopover();
 }
@@ -660,8 +633,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
     } else {
       await addDoc(collection(db, "schools", schoolId, colName), {
         ...payload,
-        createdBy: currentUser.uid,
-        createdByName: profile?.displayName || "이름없음",
+        createdByName: localName || "이름없음",
         createdAt: serverTimestamp(),
       });
     }
