@@ -537,7 +537,7 @@ function splitDatetimeLocal(value) {
 function openModal(type, dateStr, existing) {
   currentType = type;
   editingItem = existing || null;
-  modalTitle.textContent = existing ? "일정 상세" : "일정 추가";
+  modalTitle.textContent = existing ? "일정 수정" : "일정 추가";
 
   tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.type === type));
   tabBtns.forEach((b) => (b.disabled = !!existing));
@@ -748,9 +748,26 @@ function openDayPopover(cellEl, dateStr) {
   }
 
   dayPopover.innerHTML = html;
-  dayPopover.style.top = `${rect.bottom + scrollY + 4}px`;
-  dayPopover.style.left = `${Math.min(rect.left + scrollX, window.innerWidth - 280)}px`;
-  dayPopover.hidden = false;
+  dayPopover.hidden = false; // 크기를 재려면 먼저 화면에 그려져 있어야 함
+  dayPopover.style.top = "0px";
+  dayPopover.style.left = "0px";
+
+  const popH = dayPopover.offsetHeight;
+  const popW = dayPopover.offsetWidth;
+  const viewportBottom = scrollY + window.innerHeight;
+  const viewportRight = scrollX + window.innerWidth;
+
+  let top = rect.bottom + scrollY + 4;
+  if (top + popH > viewportBottom) {
+    // 아래쪽에 공간이 부족하면 셀 위쪽에 표시
+    top = Math.max(scrollY + 4, rect.top + scrollY - popH - 4);
+  }
+  let left = rect.left + scrollX;
+  left = Math.min(left, viewportRight - popW - 8);
+  left = Math.max(scrollX + 8, left);
+
+  dayPopover.style.top = `${top}px`;
+  dayPopover.style.left = `${left}px`;
 
   dayPopover.querySelectorAll("[data-quick]").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
