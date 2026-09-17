@@ -117,13 +117,19 @@ function showAuthError(message) {
   box.textContent = message;
 }
 
-// 리디렉션 로그인에서 돌아온 경우 처리 (팝업이 막힌 브라우저를 위한 대체 경로)
-getRedirectResult(auth).catch((e) => {
-  console.error("redirect sign-in error", e);
-  showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
-});
+// 리디렉션 로그인에서 돌아온 경우 처리
+console.log("[auth] app.js loaded, checking redirect result...");
+getRedirectResult(auth)
+  .then((result) => {
+    console.log("[auth] getRedirectResult resolved:", result ? `user=${result.user?.email}` : "null (no pending redirect)");
+  })
+  .catch((e) => {
+    console.error("[auth] getRedirectResult error:", e.code, e.message, e);
+    showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
+  });
 
 onAuthStateChanged(auth, async (user) => {
+  console.log("[auth] onAuthStateChanged fired:", user ? user.email : "signed out");
   detachListeners();
   if (!user) {
     currentUser = null;
@@ -154,13 +160,16 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 document.getElementById("googleSignInBtn").addEventListener("click", async () => {
+  console.log("[auth] sign-in button clicked, calling signInWithRedirect...");
   showAuthError(null);
   const provider = new GoogleAuthProvider();
   // 팝업 방식은 브라우저의 제3자 쿠키 차단·COOP 정책 등으로 "열렸다 바로 닫힘" 증상이
   // 흔히 발생해 신뢰할 수 없다고 판단, 전체 페이지 이동 방식(리디렉션)만 사용한다.
   try {
     await signInWithRedirect(auth, provider);
+    console.log("[auth] signInWithRedirect call returned (should have navigated away before this)");
   } catch (e) {
+    console.error("[auth] signInWithRedirect threw:", e.code, e.message, e);
     showAuthError(AUTH_ERROR_MESSAGES[e.code] || ("로그인에 실패했습니다: " + e.message));
   }
 });
