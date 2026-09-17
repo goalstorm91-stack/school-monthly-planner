@@ -68,6 +68,8 @@ exports.fetchNeisSchedule = onCall({ secrets: [NEIS_API_KEY], region: REGION, co
     throw new HttpsError("unavailable", "나이스 서버에 연결할 수 없습니다: " + e.message);
   }
 
+  // SBTR_DD_SC_NM(수업공휴일구분): "수업일"이면 실제 수업일에 있는 행사, 그 외("휴업일", "공휴일" 등)는
+  // 재량휴업일/법정공휴일처럼 학교가 쉬는 날 — 행사가 아니라 공휴일로 분류한다.
   const rows = extractRows(data, "SchoolSchedule");
   return rows
     .filter((r) => r.AA_YMD)
@@ -75,5 +77,6 @@ exports.fetchNeisSchedule = onCall({ secrets: [NEIS_API_KEY], region: REGION, co
       date: `${r.AA_YMD.slice(0, 4)}-${r.AA_YMD.slice(4, 6)}-${r.AA_YMD.slice(6, 8)}`,
       title: r.EVENT_NM || "(제목 없음)",
       memo: r.EVENT_CNTNT || "",
+      isHoliday: r.SBTR_DD_SC_NM !== "수업일",
     }));
 });

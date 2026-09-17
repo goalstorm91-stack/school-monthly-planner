@@ -411,7 +411,7 @@ async function loadNeisSchedule() {
       row.innerHTML = `
         <input type="checkbox" data-idx="${i}" style="margin-top:3px" ${r.alreadyAdded ? "checked disabled" : "checked"} />
         <span>
-          <div class="si-top"><span>${escapeHtml(r.title)}</span><span class="si-date">${r.date.slice(5)}</span></div>
+          <div class="si-top"><span>${escapeHtml(r.title)}${r.isHoliday ? ' <span class="holiday-badge">공휴일</span>' : ""}</span><span class="si-date">${r.date.slice(5)}</span></div>
           <div class="si-meta">${r.alreadyAdded ? "이미 등록되어 있어요" : escapeHtml(r.memo || "")}</div>
         </span>`;
       listBox.appendChild(row);
@@ -437,6 +437,7 @@ document.getElementById("neisImportSelectedBtn").addEventListener("click", async
         endTime: null,
         title: r.title,
         memo: r.memo || "",
+        isHoliday: !!r.isHoliday,
         createdByName: "나이스 학사일정",
         source: "neis",
         createdAt: serverTimestamp(),
@@ -580,7 +581,7 @@ function renderCalendar() {
     itemsWrap.className = "day-items";
     const { events, duties, docs } = itemsForDate(dateStr);
     const chips = [
-      ...events.map((e) => ({ cls: "event", label: `${timeLabel(e)}${e.title}` })),
+      ...events.map((e) => ({ cls: e.isHoliday ? "holiday" : "event", label: `${timeLabel(e)}${e.title}` })),
       ...duties.map((d) => ({ cls: "duty", label: `${timeLabel(d)}${d.person} ${d.type}` })),
       ...docs.map((d) => ({ cls: "doc", label: `${timeLabel(d)}${d.title}` })),
     ];
@@ -611,7 +612,7 @@ function renderCalendar() {
 
 function renderSummary() {
   const { viewYear: y, viewMonth: m } = state;
-  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m));
+  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m) && !e.isHoliday);
   const duties = state.duties.filter((d) => itemOverlapsMonth(d, y, m));
   const docs = state.docs.filter((d) => isInMonth(d.date, y, m));
   els.sumEvents.textContent = events.length;
@@ -656,7 +657,7 @@ function renderSideLists() {
     els.docList.appendChild(item);
   });
 
-  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
+  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m) && !e.isHoliday).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.eventList.innerHTML = "";
   if (!events.length) els.eventList.innerHTML = `<div class="empty-note">등록된 행사가 없습니다.</div>`;
   events.forEach((e) => {
@@ -671,7 +672,8 @@ function renderSideLists() {
 }
 
 function renderTodayLists() {
-  const { events, duties, docs } = itemsForDate(todayStr());
+  const { events: allEvents, duties, docs } = itemsForDate(todayStr());
+  const events = allEvents.filter((e) => !e.isHoliday);
 
   els.todayEventList.innerHTML = "";
   if (!events.length) els.todayEventList.innerHTML = `<div class="empty-note">오늘 등록된 행사가 없습니다.</div>`;
@@ -942,7 +944,7 @@ function openDayPopover(cellEl, dateStr) {
     </div>`;
 
   const rows = [
-    ...events.map((e) => ({ type: "event", cls: "event", label: `${timeLabel(e)}${e.title}`, item: e })),
+    ...events.map((e) => ({ type: "event", cls: e.isHoliday ? "holiday" : "event", label: `${timeLabel(e)}${e.title}`, item: e })),
     ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${timeLabel(d)}${d.person}(${d.role}) ${d.type} - ${d.title || ""}`, item: d })),
     ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${timeLabel(d)}${d.title} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
   ];
