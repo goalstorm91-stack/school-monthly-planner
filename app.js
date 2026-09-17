@@ -306,7 +306,7 @@ function itemsForDate(dateStr) {
   const duties = state.duties
     .filter((d) => dateStr === d.date || (d.endDate && dateStr >= d.date && dateStr <= d.endDate))
     .sort(byTime);
-  const docs = state.docs.filter((d) => d.date === dateStr);
+  const docs = state.docs.filter((d) => d.date === dateStr).sort(byTime);
   return { events, duties, docs };
 }
 function monthRangeKey(y, m) {
@@ -414,7 +414,7 @@ function renderCalendar() {
     const chips = [
       ...events.map((e) => ({ cls: "event", label: `${timeLabel(e)}${e.title}` })),
       ...duties.map((d) => ({ cls: "duty", label: `${timeLabel(d)}${d.person} ${d.type}` })),
-      ...docs.map((d) => ({ cls: "doc", label: d.title })),
+      ...docs.map((d) => ({ cls: "doc", label: `${timeLabel(d)}${d.title}` })),
     ];
     const maxShow = 3;
     chips.slice(0, maxShow).forEach((c) => {
@@ -475,7 +475,7 @@ function renderSideLists() {
     els.dutyList.appendChild(item);
   });
 
-  const docsArr = state.docs.filter((d) => isInMonth(d.date, y, m)).sort((a, b) => a.date.localeCompare(b.date));
+  const docsArr = state.docs.filter((d) => isInMonth(d.date, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.docList.innerHTML = "";
   if (!docsArr.length) els.docList.innerHTML = `<div class="empty-note">등록된 공문이 없습니다.</div>`;
   docsArr.forEach((d) => {
@@ -547,7 +547,7 @@ function openModal(type, dateStr, existing) {
   fStartRow.hidden = isDoc;
   fEndRow.hidden = isDoc;
 
-  fDocDate.value = existing?.date || dateStr || todayStr();
+  fDocDate.value = toDatetimeLocal(existing?.date || dateStr || todayStr(), existing?.time || "09:00");
   fStart.value = toDatetimeLocal(existing?.date || dateStr || todayStr(), existing?.time || "09:00");
   fEnd.value = existing?.endDate ? toDatetimeLocal(existing.endDate, existing.endTime || "09:00") : "";
 
@@ -613,13 +613,27 @@ tabBtns.forEach((btn) => {
     fDocDateRow.hidden = !isDoc;
     fStartRow.hidden = isDoc;
     fEndRow.hidden = isDoc;
-    // 탭을 바꿔도 이미 고른 날짜는 유지
+    // 탭을 바꿔도 이미 고른 날짜/시간은 유지
     if (isDoc) {
-      fDocDate.value = splitDatetimeLocal(fStart.value).date || fDocDate.value || todayStr();
+      fDocDate.value = fStart.value || fDocDate.value || toDatetimeLocal(todayStr(), "09:00");
     } else if (!fStart.value) {
-      fStart.value = toDatetimeLocal(fDocDate.value || todayStr(), "09:00");
+      fStart.value = fDocDate.value || toDatetimeLocal(todayStr(), "09:00");
     }
   });
+});
+
+// 종료일시를 아직 입력 전이면, 처음 눌렀을 때 시작일시의 연/월/일을 기본값으로 넣어준다.
+fEnd.addEventListener("focus", () => {
+  if (fEnd.value || !fStart.value) return;
+  const { date: startDate, time: startTime } = splitDatetimeLocal(fStart.value);
+  fEnd.value = toDatetimeLocal(startDate, startTime || "09:00");
+});
+// 시작일시를 바꾸면, 이미 입력된 종료일시의 날짜도 함께 따라간다 (시간은 유지).
+fStart.addEventListener("change", () => {
+  if (!fEnd.value) return;
+  const { date: startDate } = splitDatetimeLocal(fStart.value);
+  const { time: endTime } = splitDatetimeLocal(fEnd.value);
+  if (startDate) fEnd.value = toDatetimeLocal(startDate, endTime);
 });
 
 document.getElementById("modalClose").addEventListener("click", closeModal);
@@ -656,12 +670,12 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
       };
     }
   } else {
-    const date = fDocDate.value;
-    if (!date) return alert("날짜를 선택해주세요.");
+    if (!fDocDate.value) return alert("보고기한을 선택해주세요.");
+    const { date, time } = splitDatetimeLocal(fDocDate.value);
     const title = document.getElementById("doc-title").value.trim();
     if (!title) return alert("공문 제목을 입력해주세요.");
     payload = {
-      date,
+      date, time,
       title,
       sender: document.getElementById("doc-sender").value.trim(),
       status: document.getElementById("doc-status").value,
@@ -723,7 +737,7 @@ function openDayPopover(cellEl, dateStr) {
   const rows = [
     ...events.map((e) => ({ type: "event", cls: "event", label: `${timeLabel(e)}${e.title}`, item: e })),
     ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${timeLabel(d)}${d.person}(${d.role}) ${d.type} - ${d.title || ""}`, item: d })),
-    ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${d.title} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
+    ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${timeLabel(d)}${d.title} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
   ];
   if (!rows.length) {
     html += `<div class="empty-note">등록된 일정이 없습니다.</div>`;
@@ -848,7 +862,7 @@ function buildPrintTable() {
     const tdDoc = document.createElement("td");
     tdDoc.className = "col-doc";
     tdDoc.innerHTML = docs
-      .map((d3) => `<div class="print-item">${escapeHtml(d3.title)}${d3.sender ? ` (${escapeHtml(d3.sender)})` : ""} ${d3.status === "done" ? "[완료]" : "[처리중]"}</div>`)
+      .map((d3) => `<div class="print-item">${escapeHtml(timeLabel(d3))}${escapeHtml(d3.title)}${d3.sender ? ` (${escapeHtml(d3.sender)})` : ""} ${d3.status === "done" ? "[완료]" : "[처리중]"}</div>`)
       .join("") || "";
 
     tr.appendChild(tdDate);

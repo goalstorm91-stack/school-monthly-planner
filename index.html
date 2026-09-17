@@ -191,10 +191,10 @@
     </div>
 
     <div class="modal-body">
-      <!-- 공문용: 날짜만 -->
+      <!-- 공문용: 보고기한(날짜+시간) -->
       <div class="form-row" id="f-docDateRow">
-        <label>날짜</label>
-        <input type="date" id="f-docDate" />
+        <label>보고기한</label>
+        <input type="datetime-local" id="f-docDate" />
       </div>
 
       <!-- 행사/복무용: 날짜+시간 동시 입력 -->
@@ -247,7 +247,7 @@
       <!-- 공문 fields -->
       <div class="form-fields" data-fields="doc" hidden>
         <div class="form-row"><label>공문 제목</label><input type="text" id="doc-title" placeholder="예) 2026학년도 방과후학교 운영계획 제출" /></div>
-        <div class="form-row"><label>발신(부서)</label><input type="text" id="doc-sender" placeholder="예) 교육지원청 초등교육과" /></div>
+        <div class="form-row"><label>발신(부서)</label><input type="text" id="doc-sender" placeholder="(예) 유초등교육과" /></div>
         <div class="form-row">
           <label>처리상태</label>
           <select id="doc-status">
@@ -314,6 +314,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=9"></script>
+<script type="module" src="app.js?v=10"></script>
 </body>
 </html>
