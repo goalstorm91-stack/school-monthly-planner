@@ -453,10 +453,10 @@ function renderSummary() {
 }
 
 function dateLabel(item) {
-  const base = item.endDate && item.endDate !== item.date
-    ? `${item.date.slice(5)} ~ ${item.endDate.slice(5)}`
-    : item.date.slice(5);
-  return item.time ? `${base} ${item.time}` : base;
+  const startPart = item.time ? `${item.date.slice(5)} ${item.time}` : item.date.slice(5);
+  if (!item.endDate || item.endDate === item.date) return startPart;
+  const endPart = item.endTime ? `${item.endDate.slice(5)} ${item.endTime}` : item.endDate.slice(5);
+  return `${startPart} ~ ${endPart}`;
 }
 
 function renderSideLists() {
@@ -509,17 +509,30 @@ const modalOverlay = document.getElementById("modalOverlay");
 const modalTitle = document.getElementById("modalTitle");
 const tabBtns = document.querySelectorAll("#modalOverlay .tab-btn");
 const fieldGroups = document.querySelectorAll(".form-fields");
-const fDate = document.getElementById("f-date");
-const fEndDate = document.getElementById("f-endDate");
-const fEndDateLabel = document.getElementById("f-endDateLabel");
-const fTime = document.getElementById("f-time");
-const fTimeRow = document.getElementById("f-timeRow");
+const fDocDate = document.getElementById("f-docDate");
+const fDocDateRow = document.getElementById("f-docDateRow");
+const fStart = document.getElementById("f-start");
+const fStartRow = document.getElementById("f-startRow");
+const fEnd = document.getElementById("f-end");
+const fEndRow = document.getElementById("f-endRow");
 const itemAuthorLine = document.getElementById("itemAuthorLine");
 
 const COLLECTION_BY_TYPE = { event: "events", duty: "duties", doc: "docs" };
 
 let currentType = "event";
 let editingItem = null;
+
+// "YYYY-MM-DD" + "HH:MM"(선택) -> datetime-local 문자열
+function toDatetimeLocal(dateStr, timeStr) {
+  if (!dateStr) return "";
+  return `${dateStr}T${timeStr || "00:00"}`;
+}
+// datetime-local 문자열 -> { date, time }
+function splitDatetimeLocal(value) {
+  if (!value) return { date: null, time: null };
+  const [date, time] = value.split("T");
+  return { date: date || null, time: time || null };
+}
 
 function openModal(type, dateStr, existing) {
   currentType = type;
@@ -529,14 +542,14 @@ function openModal(type, dateStr, existing) {
   tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.type === type));
   tabBtns.forEach((b) => (b.disabled = !!existing));
   fieldGroups.forEach((g) => (g.hidden = g.dataset.fields !== type));
-  const showEndDate = type === "event" || type === "duty";
-  fEndDate.hidden = !showEndDate;
-  fEndDateLabel.hidden = !showEndDate;
-  fTimeRow.hidden = !showEndDate;
+  const isDoc = type === "doc";
+  fDocDateRow.hidden = !isDoc;
+  fStartRow.hidden = isDoc;
+  fEndRow.hidden = isDoc;
 
-  fDate.value = dateStr || todayStr();
-  fEndDate.value = existing?.endDate || "";
-  fTime.value = existing?.time || "";
+  fDocDate.value = existing?.date || dateStr || todayStr();
+  fStart.value = toDatetimeLocal(existing?.date || dateStr || todayStr(), existing?.time || "09:00");
+  fEnd.value = existing?.endDate ? toDatetimeLocal(existing.endDate, existing.endTime || "09:00") : "";
 
   document.getElementById("ev-title").value = "";
   document.getElementById("ev-memo").value = "";
@@ -568,7 +581,10 @@ function openModal(type, dateStr, existing) {
     }
   }
 
-  fDate.disabled = !!existing; // 날짜는 등록 후 수정 불가(단순화) — 새 항목으로 다시 등록 권장
+  // 날짜/시간은 등록 후 수정 불가(단순화) — 새 항목으로 다시 등록 권장
+  fDocDate.disabled = !!existing;
+  fStart.disabled = !!existing;
+  fEnd.disabled = !!existing;
 
   if (existing) {
     itemAuthorLine.hidden = false;
@@ -593,10 +609,16 @@ tabBtns.forEach((btn) => {
     currentType = btn.dataset.type;
     tabBtns.forEach((b) => b.classList.toggle("active", b === btn));
     fieldGroups.forEach((g) => (g.hidden = g.dataset.fields !== currentType));
-    const showEndDate = currentType === "event" || currentType === "duty";
-    fEndDate.hidden = !showEndDate;
-    fEndDateLabel.hidden = !showEndDate;
-    fTimeRow.hidden = !showEndDate;
+    const isDoc = currentType === "doc";
+    fDocDateRow.hidden = !isDoc;
+    fStartRow.hidden = isDoc;
+    fEndRow.hidden = isDoc;
+    // 탭을 바꿔도 이미 고른 날짜는 유지
+    if (isDoc) {
+      fDocDate.value = splitDatetimeLocal(fStart.value).date || fDocDate.value || todayStr();
+    } else if (!fStart.value) {
+      fStart.value = toDatetimeLocal(fDocDate.value || todayStr(), "09:00");
+    }
   });
 });
 
@@ -607,30 +629,35 @@ modalOverlay.addEventListener("click", (e) => {
 });
 
 document.getElementById("saveBtn").addEventListener("click", async () => {
-  const date = fDate.value;
-  if (!date) return alert("날짜를 선택해주세요.");
-  const endDate = fEndDate.hidden ? null : fEndDate.value || null;
-  const time = fTimeRow.hidden ? null : fTime.value || null;
   const colName = COLLECTION_BY_TYPE[currentType];
   const saveBtn = document.getElementById("saveBtn");
 
   let payload;
-  if (currentType === "event") {
-    const title = document.getElementById("ev-title").value.trim();
-    if (!title) return alert("행사명을 입력해주세요.");
-    payload = { date, endDate, time, title, memo: document.getElementById("ev-memo").value.trim() };
-  } else if (currentType === "duty") {
-    const person = document.getElementById("du-person").value.trim();
-    if (!person) return alert("대상자를 입력해주세요.");
-    payload = {
-      date, endDate, time,
-      person,
-      role: document.getElementById("du-role").value,
-      type: document.getElementById("du-type").value,
-      title: document.getElementById("du-title").value.trim(),
-      memo: document.getElementById("du-memo").value.trim(),
-    };
+  if (currentType === "event" || currentType === "duty") {
+    if (!fStart.value) return alert("시작일시를 선택해주세요.");
+    const { date, time } = splitDatetimeLocal(fStart.value);
+    const { date: endDate, time: endTime } = splitDatetimeLocal(fEnd.value);
+    if (endDate && endDate < date) return alert("종료일시는 시작일시보다 빠를 수 없습니다.");
+
+    if (currentType === "event") {
+      const title = document.getElementById("ev-title").value.trim();
+      if (!title) return alert("행사명을 입력해주세요.");
+      payload = { date, time, endDate, endTime, title, memo: document.getElementById("ev-memo").value.trim() };
+    } else {
+      const person = document.getElementById("du-person").value.trim();
+      if (!person) return alert("대상자를 입력해주세요.");
+      payload = {
+        date, time, endDate, endTime,
+        person,
+        role: document.getElementById("du-role").value,
+        type: document.getElementById("du-type").value,
+        title: document.getElementById("du-title").value.trim(),
+        memo: document.getElementById("du-memo").value.trim(),
+      };
+    }
   } else {
+    const date = fDocDate.value;
+    if (!date) return alert("날짜를 선택해주세요.");
     const title = document.getElementById("doc-title").value.trim();
     if (!title) return alert("공문 제목을 입력해주세요.");
     payload = {
