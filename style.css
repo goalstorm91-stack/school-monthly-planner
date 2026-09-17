@@ -329,6 +329,10 @@ body {
   .print-item { margin: 0 0 2px; }
   .print-item:last-child { margin-bottom: 0; }
   .print-footer { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: #555; }
+
+  .print-area.hide-event-col .col-event { display: none; }
+  .print-area.hide-duty-col .col-duty { display: none; }
+  .print-area.hide-doc-col .col-doc { display: none; }
 }
 
 /* ---------- Auth / onboarding screens ---------- */
@@ -385,6 +389,12 @@ body {
   display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
   background: var(--color-holiday-bg); color: var(--color-holiday); vertical-align: middle;
 }
+
+.print-check-row {
+  display: flex; align-items: center; gap: 9px; padding: 9px 4px; font-size: 14.5px; cursor: pointer;
+}
+.print-check-row input { width: 17px; height: 17px; cursor: pointer; }
+.print-check-divider { height: 1px; background: var(--color-border); margin: 2px 0 4px; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 980px) {

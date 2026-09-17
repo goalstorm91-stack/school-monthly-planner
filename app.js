@@ -1041,8 +1041,41 @@ els.monthSelect.addEventListener("change", (e) => {
 // ============================================================
 // PRINT VIEW
 // ============================================================
+const printModalOverlay = document.getElementById("printModalOverlay");
+const printChkAll = document.getElementById("printChkAll");
+const printChkCats = document.querySelectorAll(".printChkCat");
+
 document.getElementById("printBtn").addEventListener("click", () => {
+  printModalOverlay.hidden = false;
+});
+document.getElementById("printModalClose").addEventListener("click", () => (printModalOverlay.hidden = true));
+document.getElementById("printModalCancel").addEventListener("click", () => (printModalOverlay.hidden = true));
+printModalOverlay.addEventListener("click", (e) => {
+  if (e.target === printModalOverlay) printModalOverlay.hidden = true;
+});
+
+printChkAll.addEventListener("change", () => {
+  printChkCats.forEach((cb) => (cb.checked = printChkAll.checked));
+});
+printChkCats.forEach((cb) => {
+  cb.addEventListener("change", () => {
+    printChkAll.checked = Array.from(printChkCats).every((c) => c.checked);
+  });
+});
+
+document.getElementById("printModalGo").addEventListener("click", () => {
+  const selected = {};
+  printChkCats.forEach((cb) => (selected[cb.dataset.cat] = cb.checked));
+  if (!selected.event && !selected.duty && !selected.doc) {
+    return alert("인쇄할 항목을 하나 이상 선택해주세요.");
+  }
+  const printArea = document.getElementById("printArea");
+  printArea.classList.toggle("hide-event-col", !selected.event);
+  printArea.classList.toggle("hide-duty-col", !selected.duty);
+  printArea.classList.toggle("hide-doc-col", !selected.doc);
+
   buildPrintTable();
+  printModalOverlay.hidden = true;
   window.print();
 });
 
