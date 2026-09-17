@@ -146,7 +146,7 @@ body {
   box-shadow: var(--shadow);
 }
 .calendar-panel { padding: 16px 18px 20px; }
-.calendar-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.calendar-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .calendar-toolbar h2 { margin: 0; font-size: 21px; font-weight: 800; }
 .legend { display: flex; gap: 14px; font-size: 13.5px; color: var(--color-text-dim); font-weight: 500; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }

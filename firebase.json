@@ -3,6 +3,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "functions": {
+    "source": "functions"
+  },
   "hosting": {
     "public": ".",
     "ignore": [
@@ -13,6 +16,7 @@
       "firestore.rules",
       "firestore.indexes.json",
       "README.md",
+      "functions/**",
       "node_modules/**"
     ],
     "headers": [

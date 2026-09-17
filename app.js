@@ -17,10 +17,12 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+const functions = getFunctions(firebaseApp, "asia-northeast3");
 
 const VIEW_PREF_KEY = "schoolMonthlyPlanner.viewPref";
 const LOCAL_KEY = "schoolMonthlyPlanner.local"; // { schoolId, displayName }
@@ -284,6 +286,168 @@ document.getElementById("copyInviteBtn").addEventListener("click", async () => {
     alert("참여코드가 복사되었습니다.");
   } catch (e) {
     alert("복사에 실패했습니다. 코드: " + code);
+  }
+});
+
+// ---------- NEIS 학사일정 가져오기 ----------
+const searchNeisSchoolFn = httpsCallable(functions, "searchNeisSchool");
+const fetchNeisScheduleFn = httpsCallable(functions, "fetchNeisSchedule");
+
+const neisModalOverlay = document.getElementById("neisModalOverlay");
+const neisSearchPane = document.getElementById("neisSearchPane");
+const neisSchedulePane = document.getElementById("neisSchedulePane");
+let neisScheduleCache = []; // 현재 모달에 표시 중인 {date, title, memo, alreadyAdded} 목록
+
+function closeNeisModal() {
+  neisModalOverlay.hidden = true;
+}
+function showNeisSearchPane() {
+  neisSearchPane.hidden = false;
+  neisSchedulePane.hidden = true;
+  document.getElementById("neisImportSelectedBtn").hidden = true;
+}
+async function showNeisSchedulePane() {
+  neisSearchPane.hidden = true;
+  neisSchedulePane.hidden = false;
+  document.getElementById("neisLinkedSchoolName").textContent = schoolMeta.neisSchoolName || "";
+  await loadNeisSchedule();
+}
+
+document.getElementById("neisImportBtn").addEventListener("click", async () => {
+  neisModalOverlay.hidden = false;
+  document.getElementById("neisSchoolQuery").value = "";
+  document.getElementById("neisSearchResults").innerHTML = "";
+  if (schoolMeta?.neisOfficeCode && schoolMeta?.neisSchoolCode) {
+    await showNeisSchedulePane();
+  } else {
+    showNeisSearchPane();
+  }
+});
+document.getElementById("neisModalClose").addEventListener("click", closeNeisModal);
+document.getElementById("neisCancelBtn").addEventListener("click", closeNeisModal);
+neisModalOverlay.addEventListener("click", (e) => {
+  if (e.target === neisModalOverlay) closeNeisModal();
+});
+document.getElementById("neisRelinkBtn").addEventListener("click", showNeisSearchPane);
+
+document.getElementById("neisSearchBtn").addEventListener("click", async () => {
+  const schoolName = document.getElementById("neisSchoolQuery").value.trim();
+  if (!schoolName) return alert("학교 이름을 입력해주세요.");
+  const resultsBox = document.getElementById("neisSearchResults");
+  resultsBox.innerHTML = `<div class="empty-note">검색 중...</div>`;
+  try {
+    const res = await searchNeisSchoolFn({ schoolName });
+    const rows = res.data || [];
+    if (!rows.length) {
+      resultsBox.innerHTML = `<div class="empty-note">검색 결과가 없습니다. 학교 이름을 다시 확인해주세요.</div>`;
+      return;
+    }
+    resultsBox.innerHTML = "";
+    rows.forEach((r) => {
+      const item = document.createElement("div");
+      item.className = "side-item";
+      item.innerHTML = `
+        <div class="si-top"><span>${escapeHtml(r.schoolName)}</span></div>
+        <div class="si-meta">${escapeHtml(r.officeName)} · ${escapeHtml(r.address)}</div>`;
+      item.addEventListener("click", async () => {
+        try {
+          await updateDoc(doc(db, "schools", schoolId), {
+            neisOfficeCode: r.officeCode,
+            neisSchoolCode: r.schoolCode,
+            neisSchoolName: r.schoolName,
+          });
+          schoolMeta.neisOfficeCode = r.officeCode;
+          schoolMeta.neisSchoolCode = r.schoolCode;
+          schoolMeta.neisSchoolName = r.schoolName;
+          await showNeisSchedulePane();
+        } catch (e) {
+          alert("학교 연동에 실패했습니다: " + e.message);
+        }
+      });
+      resultsBox.appendChild(item);
+    });
+  } catch (e) {
+    resultsBox.innerHTML = `<div class="empty-note">검색에 실패했습니다: ${escapeHtml(e.message)}</div>`;
+  }
+});
+
+async function loadNeisSchedule() {
+  const listBox = document.getElementById("neisScheduleList");
+  const importBtn = document.getElementById("neisImportSelectedBtn");
+  importBtn.hidden = true;
+  listBox.innerHTML = `<div class="empty-note">${state.viewYear}년 ${state.viewMonth}월 학사일정을 불러오는 중...</div>`;
+
+  const { viewYear: y, viewMonth: m } = state;
+  const lastDay = new Date(y, m, 0).getDate();
+  const fromYmd = `${y}${String(m).padStart(2, "0")}01`;
+  const toYmd = `${y}${String(m).padStart(2, "0")}${String(lastDay).padStart(2, "0")}`;
+
+  try {
+    const res = await fetchNeisScheduleFn({
+      officeCode: schoolMeta.neisOfficeCode,
+      schoolCode: schoolMeta.neisSchoolCode,
+      fromYmd,
+      toYmd,
+    });
+    const existingKeys = new Set(state.events.map((e) => `${e.date}|${e.title}`));
+    neisScheduleCache = (res.data || []).map((r) => ({
+      ...r,
+      alreadyAdded: existingKeys.has(`${r.date}|${r.title}`),
+    }));
+
+    if (!neisScheduleCache.length) {
+      listBox.innerHTML = `<div class="empty-note">${y}년 ${m}월에는 나이스에 등록된 학사일정이 없습니다.</div>`;
+      return;
+    }
+
+    listBox.innerHTML = "";
+    neisScheduleCache.forEach((r, i) => {
+      const row = document.createElement("label");
+      row.className = "side-item";
+      row.style.display = "flex";
+      row.style.alignItems = "flex-start";
+      row.style.gap = "8px";
+      row.style.cursor = r.alreadyAdded ? "default" : "pointer";
+      row.innerHTML = `
+        <input type="checkbox" data-idx="${i}" style="margin-top:3px" ${r.alreadyAdded ? "checked disabled" : "checked"} />
+        <span>
+          <div class="si-top"><span>${escapeHtml(r.title)}</span><span class="si-date">${r.date.slice(5)}</span></div>
+          <div class="si-meta">${r.alreadyAdded ? "이미 등록되어 있어요" : escapeHtml(r.memo || "")}</div>
+        </span>`;
+      listBox.appendChild(row);
+    });
+    importBtn.hidden = false;
+  } catch (e) {
+    listBox.innerHTML = `<div class="empty-note">불러오기에 실패했습니다: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+document.getElementById("neisImportSelectedBtn").addEventListener("click", async () => {
+  const importBtn = document.getElementById("neisImportSelectedBtn");
+  const checked = Array.from(document.querySelectorAll('#neisScheduleList input[type="checkbox"]:checked:not(:disabled)'));
+  if (!checked.length) return alert("가져올 항목을 선택해주세요.");
+  importBtn.disabled = true;
+  try {
+    for (const cb of checked) {
+      const r = neisScheduleCache[Number(cb.dataset.idx)];
+      await addDoc(collection(db, "schools", schoolId, "events"), {
+        date: r.date,
+        endDate: null,
+        time: null,
+        endTime: null,
+        title: r.title,
+        memo: r.memo || "",
+        createdByName: "나이스 학사일정",
+        source: "neis",
+        createdAt: serverTimestamp(),
+      });
+    }
+    alert(`${checked.length}건을 가져왔습니다.`);
+    closeNeisModal();
+  } catch (e) {
+    alert("가져오기에 실패했습니다: " + e.message);
+  } finally {
+    importBtn.disabled = false;
   }
 });
 

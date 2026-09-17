@@ -120,6 +120,7 @@
           <span class="legend-item"><i class="dot duty-color"></i>복무</span>
           <span class="legend-item"><i class="dot doc-color"></i>공문(보고)</span>
         </div>
+        <button id="neisImportBtn" class="btn btn-sm">나이스 학사일정 가져오기</button>
       </div>
       <div class="weekday-row">
         <div class="weekday sun">일</div>
@@ -198,6 +199,40 @@
       <p class="onboarding-hint">이 코드를 학교 구성원에게 전달하면, 접속 후 "참여코드로 참여"에서 입력해 같은 학교 데이터에 접속할 수 있습니다.</p>
       <div class="invite-code-box" id="inviteCodeBox">------</div>
       <button id="copyInviteBtn" class="btn" style="width:100%">코드 복사</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== NEIS 학사일정 가져오기 MODAL ===================== -->
+<div id="neisModalOverlay" class="modal-overlay" hidden>
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h3>나이스 학사일정 가져오기</h3>
+      <button id="neisModalClose" class="btn icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="neisSearchPane">
+        <p class="onboarding-hint">먼저 우리 학교를 찾아 연동해주세요. (한 번만 하면 다음부터는 바로 불러옵니다)</p>
+        <div class="form-row">
+          <label>학교 이름</label>
+          <input type="text" id="neisSchoolQuery" placeholder="예) 소정초등학교" />
+        </div>
+        <button id="neisSearchBtn" class="btn btn-primary" style="width:100%">학교 검색</button>
+        <div id="neisSearchResults" class="side-list" style="margin-top:10px;max-height:260px"></div>
+      </div>
+
+      <div id="neisSchedulePane" hidden>
+        <p class="onboarding-hint" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <span>연동된 학교: <strong id="neisLinkedSchoolName"></strong></span>
+          <button id="neisRelinkBtn" class="btn btn-sm">다른 학교로 변경</button>
+        </p>
+        <div id="neisScheduleList" class="side-list" style="max-height:320px"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="spacer"></div>
+      <button id="neisCancelBtn" class="btn">취소</button>
+      <button id="neisImportSelectedBtn" class="btn btn-primary" hidden>선택 항목 가져오기</button>
     </div>
   </div>
 </div>
@@ -339,6 +374,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=14"></script>
+<script type="module" src="app.js?v=15"></script>
 </body>
 </html>
