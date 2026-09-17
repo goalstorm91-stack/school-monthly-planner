@@ -534,10 +534,12 @@ function splitDatetimeLocal(value) {
   return { date: date || null, time: time || null };
 }
 
+const TYPE_LABELS = { event: "행사", duty: "복무", doc: "공문(보고)" };
+
 function openModal(type, dateStr, existing) {
   currentType = type;
   editingItem = existing || null;
-  modalTitle.textContent = existing ? "일정 수정" : "일정 추가";
+  modalTitle.textContent = `${TYPE_LABELS[type]} ${existing ? "수정" : "추가"}`;
 
   tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.type === type));
   tabBtns.forEach((b) => (b.disabled = !!existing));
@@ -581,10 +583,6 @@ function openModal(type, dateStr, existing) {
     }
   }
 
-  // 날짜/시간은 등록 후 수정 불가(단순화) — 새 항목으로 다시 등록 권장
-  fDocDate.disabled = !!existing;
-  fStart.disabled = !!existing;
-  fEnd.disabled = !!existing;
 
   if (existing) {
     itemAuthorLine.hidden = false;
@@ -607,6 +605,7 @@ tabBtns.forEach((btn) => {
   btn.addEventListener("click", () => {
     if (editingItem) return;
     currentType = btn.dataset.type;
+    modalTitle.textContent = `${TYPE_LABELS[currentType]} 추가`;
     tabBtns.forEach((b) => b.classList.toggle("active", b === btn));
     fieldGroups.forEach((g) => (g.hidden = g.dataset.fields !== currentType));
     const isDoc = currentType === "doc";
