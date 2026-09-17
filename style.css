@@ -216,6 +216,13 @@ body {
 
 /* ---------- Side panel ---------- */
 .side-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.month-lists {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 18px;
+}
 .side-box-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 16px 9px;
@@ -374,4 +381,5 @@ body {
 @media (max-width: 980px) {
   .main-grid { grid-template-columns: 1fr; }
   .summary-row { grid-template-columns: repeat(2, 1fr); }
+  .month-lists { grid-template-columns: 1fr; }
 }

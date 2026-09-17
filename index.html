@@ -6,7 +6,7 @@
 <title>월중계획 대시보드</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>" />
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-<link rel="stylesheet" href="style.css?v=5" />
+<link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
@@ -15,7 +15,7 @@
   <div class="auth-card">
     <div class="auth-logo">📅</div>
     <h1>월중계획 대시보드</h1>
-    <p class="auth-desc">우리 학교 행사 · 복무(출장·연수) · 공문 보고를<br />구성원이 함께 입력하고 확인하는 공간입니다.</p>
+    <p class="auth-desc">우리 학교 행사 · 복무(출장·연수) · 공문(보고)를<br />구성원이 함께 입력하고 확인하는 공간입니다.</p>
     <p class="auth-desc" style="margin-bottom:0">불러오는 중입니다...</p>
     <p id="authErrorBox" class="auth-error" hidden></p>
   </div>
@@ -100,11 +100,11 @@
     </div>
     <div class="summary-card doc-color">
       <div class="summary-num" id="sumDocs">0</div>
-      <div class="summary-label">공문 보고</div>
+      <div class="summary-label">공문(보고)</div>
     </div>
     <div class="summary-card doc-pending-color">
       <div class="summary-num" id="sumDocsPending">0</div>
-      <div class="summary-label">공문 처리 대기</div>
+      <div class="summary-label">공문(보고) 처리 대기</div>
     </div>
   </section>
 
@@ -118,7 +118,7 @@
         <div class="legend">
           <span class="legend-item"><i class="dot event-color"></i>행사</span>
           <span class="legend-item"><i class="dot duty-color"></i>복무</span>
-          <span class="legend-item"><i class="dot doc-color"></i>공문</span>
+          <span class="legend-item"><i class="dot doc-color"></i>공문(보고)</span>
         </div>
       </div>
       <div class="weekday-row">
@@ -133,31 +133,56 @@
       <div id="calendarGrid" class="calendar-grid"></div>
     </section>
 
-    <!-- Side lists -->
+    <!-- 오늘의 일정 -->
     <aside class="side-panel">
       <div class="side-box">
         <div class="side-box-header">
-          <h3>이번 달 복무 현황</h3>
-          <button class="btn btn-sm" data-add="duty">+ 추가</button>
-        </div>
-        <div id="dutyList" class="side-list"></div>
-      </div>
-      <div class="side-box">
-        <div class="side-box-header">
-          <h3>이번 달 공문 보고 현황</h3>
-          <button class="btn btn-sm" data-add="doc">+ 추가</button>
-        </div>
-        <div id="docList" class="side-list"></div>
-      </div>
-      <div class="side-box">
-        <div class="side-box-header">
-          <h3>이번 달 행사 목록</h3>
+          <h3>오늘의 행사</h3>
           <button class="btn btn-sm" data-add="event">+ 추가</button>
         </div>
-        <div id="eventList" class="side-list"></div>
+        <div id="todayEventList" class="side-list"></div>
+      </div>
+      <div class="side-box">
+        <div class="side-box-header">
+          <h3>오늘의 복무</h3>
+          <button class="btn btn-sm" data-add="duty">+ 추가</button>
+        </div>
+        <div id="todayDutyList" class="side-list"></div>
+      </div>
+      <div class="side-box">
+        <div class="side-box-header">
+          <h3>오늘의 공문(보고)</h3>
+          <button class="btn btn-sm" data-add="doc">+ 추가</button>
+        </div>
+        <div id="todayDocList" class="side-list"></div>
       </div>
     </aside>
   </main>
+
+  <!-- 이번 달 전체 목록 -->
+  <section class="month-lists">
+    <div class="side-box">
+      <div class="side-box-header">
+        <h3>이번 달 복무 현황</h3>
+        <button class="btn btn-sm" data-add="duty">+ 추가</button>
+      </div>
+      <div id="dutyList" class="side-list"></div>
+    </div>
+    <div class="side-box">
+      <div class="side-box-header">
+        <h3>이번 달 공문(보고) 현황</h3>
+        <button class="btn btn-sm" data-add="doc">+ 추가</button>
+      </div>
+      <div id="docList" class="side-list"></div>
+    </div>
+    <div class="side-box">
+      <div class="side-box-header">
+        <h3>이번 달 행사 목록</h3>
+        <button class="btn btn-sm" data-add="event">+ 추가</button>
+      </div>
+      <div id="eventList" class="side-list"></div>
+    </div>
+  </section>
 
   <footer class="app-footer">우리 학교 구성원 모두에게 실시간으로 공유되는 데이터입니다. 참여코드를 아는 구성원 누구나 모든 항목을 입력·수정·삭제할 수 있습니다.</footer>
 </div>
@@ -187,11 +212,11 @@
     <div class="modal-tabs">
       <button class="tab-btn active" data-type="event">행사</button>
       <button class="tab-btn" data-type="duty">복무</button>
-      <button class="tab-btn" data-type="doc">공문</button>
+      <button class="tab-btn" data-type="doc">공문(보고)</button>
     </div>
 
     <div class="modal-body">
-      <!-- 공문용: 보고기한(날짜+시간) -->
+      <!-- 공문(보고)용: 보고기한(날짜+시간) -->
       <div class="form-row" id="f-docDateRow">
         <label>보고기한</label>
         <input type="datetime-local" id="f-docDate" />
@@ -244,9 +269,9 @@
         <div class="form-row"><label>메모</label><textarea id="du-memo"></textarea></div>
       </div>
 
-      <!-- 공문 fields -->
+      <!-- 공문(보고) fields -->
       <div class="form-fields" data-fields="doc" hidden>
-        <div class="form-row"><label>공문 제목</label><input type="text" id="doc-title" placeholder="예) 2026학년도 방과후학교 운영계획 제출" /></div>
+        <div class="form-row"><label>공문(보고) 제목</label><input type="text" id="doc-title" placeholder="예) 2026학년도 방과후학교 운영계획 제출" /></div>
         <div class="form-row"><label>발신(부서)</label><input type="text" id="doc-sender" placeholder="(예) 유초등교육과" /></div>
         <div class="form-row">
           <label>처리상태</label>
@@ -302,7 +327,7 @@
         <th class="col-day">요일</th>
         <th class="col-event">행사</th>
         <th class="col-duty">복무 (출장·연수 등)</th>
-        <th class="col-doc">공문 보고</th>
+        <th class="col-doc">공문(보고)</th>
       </tr>
     </thead>
     <tbody id="printTableBody"></tbody>
@@ -314,6 +339,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=13"></script>
+<script type="module" src="app.js?v=14"></script>
 </body>
 </html>

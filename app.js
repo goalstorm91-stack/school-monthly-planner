@@ -340,6 +340,9 @@ const els = {
   dutyList: document.getElementById("dutyList"),
   docList: document.getElementById("docList"),
   eventList: document.getElementById("eventList"),
+  todayEventList: document.getElementById("todayEventList"),
+  todayDutyList: document.getElementById("todayDutyList"),
+  todayDocList: document.getElementById("todayDocList"),
 };
 
 function populateYearMonthSelectors() {
@@ -369,6 +372,7 @@ function renderAll() {
   renderCalendar();
   renderSummary();
   renderSideLists();
+  renderTodayLists();
   saveViewPref();
 }
 
@@ -477,7 +481,7 @@ function renderSideLists() {
 
   const docsArr = state.docs.filter((d) => isInMonth(d.date, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.docList.innerHTML = "";
-  if (!docsArr.length) els.docList.innerHTML = `<div class="empty-note">등록된 공문이 없습니다.</div>`;
+  if (!docsArr.length) els.docList.innerHTML = `<div class="empty-note">등록된 공문(보고)이 없습니다.</div>`;
   docsArr.forEach((d) => {
     const item = document.createElement("div");
     item.className = `side-item status-${d.status}`;
@@ -499,6 +503,46 @@ function renderSideLists() {
       <div class="si-meta">${escapeHtml(e.memo || "")}</div>`;
     item.addEventListener("click", () => openModal("event", e.date, e));
     els.eventList.appendChild(item);
+  });
+}
+
+function renderTodayLists() {
+  const { events, duties, docs } = itemsForDate(todayStr());
+
+  els.todayEventList.innerHTML = "";
+  if (!events.length) els.todayEventList.innerHTML = `<div class="empty-note">오늘 등록된 행사가 없습니다.</div>`;
+  events.forEach((e) => {
+    const item = document.createElement("div");
+    item.className = "side-item";
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(e.title)}</span><span class="si-date">${dateLabel(e)}</span></div>
+      <div class="si-meta">${escapeHtml(e.memo || "")}</div>`;
+    item.addEventListener("click", () => openModal("event", e.date, e));
+    els.todayEventList.appendChild(item);
+  });
+
+  els.todayDutyList.innerHTML = "";
+  if (!duties.length) els.todayDutyList.innerHTML = `<div class="empty-note">오늘 등록된 복무가 없습니다.</div>`;
+  duties.forEach((d) => {
+    const item = document.createElement("div");
+    item.className = "side-item";
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(d.person)} · ${escapeHtml(d.role)}</span><span class="si-date">${dateLabel(d)}</span></div>
+      <div class="si-meta">${escapeHtml(d.type)} · ${escapeHtml(d.title || "")}</div>`;
+    item.addEventListener("click", () => openModal("duty", d.date, d));
+    els.todayDutyList.appendChild(item);
+  });
+
+  els.todayDocList.innerHTML = "";
+  if (!docs.length) els.todayDocList.innerHTML = `<div class="empty-note">오늘 등록된 공문(보고)이 없습니다.</div>`;
+  docs.forEach((d) => {
+    const item = document.createElement("div");
+    item.className = `side-item status-${d.status}`;
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
+      <div class="si-meta">${escapeHtml(d.sender || "")} · ${d.status === "done" ? "완료" : "처리중"}</div>`;
+    item.addEventListener("click", () => openModal("doc", d.date, d));
+    els.todayDocList.appendChild(item);
   });
 }
 
@@ -672,7 +716,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
     if (!fDocDate.value) return alert("보고기한을 선택해주세요.");
     const { date, time } = splitDatetimeLocal(fDocDate.value);
     const title = document.getElementById("doc-title").value.trim();
-    if (!title) return alert("공문 제목을 입력해주세요.");
+    if (!title) return alert("공문(보고) 제목을 입력해주세요.");
     payload = {
       date, time,
       title,
@@ -730,7 +774,7 @@ function openDayPopover(cellEl, dateStr) {
   html += `<div class="si-add">
       <button class="btn btn-sm" data-quick="event">+행사</button>
       <button class="btn btn-sm" data-quick="duty">+복무</button>
-      <button class="btn btn-sm" data-quick="doc">+공문</button>
+      <button class="btn btn-sm" data-quick="doc">+공문(보고)</button>
     </div>`;
 
   const rows = [
