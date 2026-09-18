@@ -502,12 +502,11 @@ const els = {
   sumDuties: document.getElementById("sumDuties"),
   sumDocs: document.getElementById("sumDocs"),
   sumDocsPending: document.getElementById("sumDocsPending"),
-  dutyList: document.getElementById("dutyList"),
-  docList: document.getElementById("docList"),
-  eventList: document.getElementById("eventList"),
   todayEventList: document.getElementById("todayEventList"),
   todayDutyList: document.getElementById("todayDutyList"),
   todayDocList: document.getElementById("todayDocList"),
+  upcomingEventList: document.getElementById("upcomingEventList"),
+  upcomingDocList: document.getElementById("upcomingDocList"),
 };
 
 function populateYearMonthSelectors() {
@@ -536,8 +535,8 @@ function renderAll() {
   els.calendarTitle.textContent = `${state.viewYear}년 ${state.viewMonth}월`;
   renderCalendar();
   renderSummary();
-  renderSideLists();
   renderTodayLists();
+  renderUpcomingLists();
   saveViewPref();
 }
 
@@ -628,47 +627,12 @@ function dateLabel(item) {
   return `${startPart} ~ ${endPart}`;
 }
 
-function renderSideLists() {
-  const { viewYear: y, viewMonth: m } = state;
-
-  const duties = state.duties.filter((d) => itemOverlapsMonth(d, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
-  els.dutyList.innerHTML = "";
-  if (!duties.length) els.dutyList.innerHTML = `<div class="empty-note">등록된 복무가 없습니다.</div>`;
-  duties.forEach((d) => {
-    const item = document.createElement("div");
-    item.className = "side-item";
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(d.person)} · ${escapeHtml(d.role)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${escapeHtml(d.type)} · ${escapeHtml(d.title || "")}</div>`;
-    item.addEventListener("click", () => openModal("duty", d.date, d));
-    els.dutyList.appendChild(item);
-  });
-
-  const docsArr = state.docs.filter((d) => isInMonth(d.date, y, m)).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
-  els.docList.innerHTML = "";
-  if (!docsArr.length) els.docList.innerHTML = `<div class="empty-note">등록된 공문(보고)이 없습니다.</div>`;
-  docsArr.forEach((d) => {
-    const item = document.createElement("div");
-    item.className = `side-item status-${d.status}`;
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${escapeHtml(d.sender || "")} · ${d.status === "done" ? "완료" : "처리중"}</div>`;
-    item.addEventListener("click", () => openModal("doc", d.date, d));
-    els.docList.appendChild(item);
-  });
-
-  const events = state.events.filter((e) => itemOverlapsMonth(e, y, m) && !e.isHoliday).sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
-  els.eventList.innerHTML = "";
-  if (!events.length) els.eventList.innerHTML = `<div class="empty-note">등록된 행사가 없습니다.</div>`;
-  events.forEach((e) => {
-    const item = document.createElement("div");
-    item.className = "side-item";
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(e.title)}</span><span class="si-date">${dateLabel(e)}</span></div>
-      <div class="si-meta">${escapeHtml(e.memo || "")}</div>`;
-    item.addEventListener("click", () => openModal("event", e.date, e));
-    els.eventList.appendChild(item);
-  });
+function docMetaLine(d) {
+  const parts = [];
+  if (d.person) parts.push(escapeHtml(d.person));
+  if (d.sender) parts.push(escapeHtml(d.sender));
+  parts.push(d.status === "done" ? "완료" : "처리중");
+  return parts.join(" · ");
 }
 
 function renderTodayLists() {
@@ -706,9 +670,55 @@ function renderTodayLists() {
     item.className = `side-item status-${d.status}`;
     item.innerHTML = `
       <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${escapeHtml(d.sender || "")} · ${d.status === "done" ? "완료" : "처리중"}</div>`;
+      <div class="si-meta">${docMetaLine(d)}</div>`;
     item.addEventListener("click", () => openModal("doc", d.date, d));
     els.todayDocList.appendChild(item);
+  });
+}
+
+function addDays(dateStr, n) {
+  const d = parseDate(dateStr);
+  d.setDate(d.getDate() + n);
+  return formatDate(d);
+}
+function itemOverlapsRange(item, rangeStart, rangeEnd) {
+  const start = item.date;
+  const end = item.endDate || item.date;
+  return start <= rangeEnd && end >= rangeStart;
+}
+
+function renderUpcomingLists() {
+  const rangeStart = addDays(todayStr(), 1);
+  const rangeEnd = addDays(todayStr(), 7);
+
+  const events = state.events
+    .filter((e) => !e.isHoliday && itemOverlapsRange(e, rangeStart, rangeEnd))
+    .sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
+  els.upcomingEventList.innerHTML = "";
+  if (!events.length) els.upcomingEventList.innerHTML = `<div class="empty-note">앞으로 7일간 등록된 행사가 없습니다.</div>`;
+  events.forEach((e) => {
+    const item = document.createElement("div");
+    item.className = "side-item";
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(e.title)}</span><span class="si-date">${dateLabel(e)}</span></div>
+      <div class="si-meta">${escapeHtml(e.memo || "")}</div>`;
+    item.addEventListener("click", () => openModal("event", e.date, e));
+    els.upcomingEventList.appendChild(item);
+  });
+
+  const docs = state.docs
+    .filter((d) => d.date >= rangeStart && d.date <= rangeEnd)
+    .sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
+  els.upcomingDocList.innerHTML = "";
+  if (!docs.length) els.upcomingDocList.innerHTML = `<div class="empty-note">앞으로 7일간 등록된 공문(보고)이 없습니다.</div>`;
+  docs.forEach((d) => {
+    const item = document.createElement("div");
+    item.className = `side-item status-${d.status}`;
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
+      <div class="si-meta">${docMetaLine(d)}</div>`;
+    item.addEventListener("click", () => openModal("doc", d.date, d));
+    els.upcomingDocList.appendChild(item);
   });
 }
 
@@ -771,6 +781,7 @@ function openModal(type, dateStr, existing) {
   document.getElementById("du-title").value = "";
   document.getElementById("du-memo").value = "";
   document.getElementById("doc-title").value = "";
+  document.getElementById("doc-person").value = localName || "";
   document.getElementById("doc-sender").value = "";
   document.getElementById("doc-status").value = "pending";
   document.getElementById("doc-memo").value = "";
@@ -787,6 +798,7 @@ function openModal(type, dateStr, existing) {
       document.getElementById("du-memo").value = existing.memo || "";
     } else if (type === "doc") {
       document.getElementById("doc-title").value = existing.title || "";
+      document.getElementById("doc-person").value = existing.person || localName || "";
       document.getElementById("doc-sender").value = existing.sender || "";
       document.getElementById("doc-status").value = existing.status || "pending";
       document.getElementById("doc-memo").value = existing.memo || "";
@@ -886,6 +898,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
     payload = {
       date, time,
       title,
+      person: document.getElementById("doc-person").value.trim(),
       sender: document.getElementById("doc-sender").value.trim(),
       status: document.getElementById("doc-status").value,
       memo: document.getElementById("doc-memo").value.trim(),
@@ -946,7 +959,7 @@ function openDayPopover(cellEl, dateStr) {
   const rows = [
     ...events.map((e) => ({ type: "event", cls: e.isHoliday ? "holiday" : "event", label: `${timeLabel(e)}${e.title}`, item: e })),
     ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${timeLabel(d)}${d.person}(${d.role}) ${d.type} - ${d.title || ""}`, item: d })),
-    ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${timeLabel(d)}${d.title} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
+    ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${timeLabel(d)}${d.title}${d.person ? ` - ${d.person}` : ""} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
   ];
   if (!rows.length) {
     html += `<div class="empty-note">등록된 일정이 없습니다.</div>`;
@@ -1121,7 +1134,7 @@ function buildPrintTable() {
     const tdDoc = document.createElement("td");
     tdDoc.className = "col-doc";
     tdDoc.innerHTML = docs
-      .map((d3) => `<div class="print-item">${escapeHtml(timeLabel(d3))}${escapeHtml(d3.title)}${d3.sender ? ` (${escapeHtml(d3.sender)})` : ""} ${d3.status === "done" ? "[완료]" : "[처리중]"}</div>`)
+      .map((d3) => `<div class="print-item">${escapeHtml(timeLabel(d3))}${escapeHtml(d3.title)}${d3.person ? ` - ${escapeHtml(d3.person)}` : ""}${d3.sender ? ` (${escapeHtml(d3.sender)})` : ""} ${d3.status === "done" ? "[완료]" : "[처리중]"}</div>`)
       .join("") || "";
 
     tr.appendChild(tdDate);
