@@ -233,6 +233,46 @@ async function enterSchool() {
   attachSchoolListeners();
 }
 
+let neisReclassifyDone = false;
+
+// 예전(공휴일 자동 분류 기능이 생기기 전)에 나이스에서 가져온 항목은 isHoliday 값이
+// 아예 없다. 그런 항목이 있으면 같은 달을 나이스에서 다시 조회해 조용히 보정한다.
+async function reclassifyNeisHolidays() {
+  if (!schoolMeta?.neisOfficeCode || !schoolMeta?.neisSchoolCode) return;
+  const stale = state.events.filter((e) => e.source === "neis" && e.isHoliday === undefined);
+  if (!stale.length) return;
+
+  const months = new Set(stale.map((e) => e.date.slice(0, 7)));
+  const neisRows = [];
+  for (const ym of months) {
+    const [y, m] = ym.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const fromYmd = `${y}${String(m).padStart(2, "0")}01`;
+    const toYmd = `${y}${String(m).padStart(2, "0")}${String(lastDay).padStart(2, "0")}`;
+    try {
+      const res = await fetchNeisScheduleFn({
+        officeCode: schoolMeta.neisOfficeCode,
+        schoolCode: schoolMeta.neisSchoolCode,
+        fromYmd, toYmd,
+      });
+      neisRows.push(...(res.data || []));
+    } catch (e) {
+      console.error("[neis] reclassify fetch failed", e);
+    }
+  }
+
+  const lookup = new Map(neisRows.map((r) => [`${r.date}|${r.title}`, r.isHoliday]));
+  for (const e of stale) {
+    const isHoliday = lookup.get(`${e.date}|${e.title}`);
+    if (isHoliday === undefined) continue; // 나이스에서 더 이상 확인 안 되면 그대로 둔다
+    try {
+      await updateDoc(doc(db, "schools", schoolId, "events", e.id), { isHoliday });
+    } catch (e2) {
+      console.error("[neis] reclassify update failed", e2);
+    }
+  }
+}
+
 function attachSchoolListeners() {
   const cols = [
     ["events", (arr) => (state.events = arr)],
@@ -245,6 +285,10 @@ function attachSchoolListeners() {
       (snap) => {
         setter(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
         renderAll();
+        if (name === "events" && !neisReclassifyDone) {
+          neisReclassifyDone = true;
+          reclassifyNeisHolidays();
+        }
       },
       (err) => console.error(`${name} listener error`, err)
     );
