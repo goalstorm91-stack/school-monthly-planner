@@ -68,8 +68,11 @@ exports.fetchNeisSchedule = onCall({ secrets: [NEIS_API_KEY], region: REGION, co
     throw new HttpsError("unavailable", "나이스 서버에 연결할 수 없습니다: " + e.message);
   }
 
-  // SBTR_DD_SC_NM(수업공휴일구분): "수업일"이면 실제 수업일에 있는 행사, 그 외("휴업일", "공휴일" 등)는
-  // 재량휴업일/법정공휴일처럼 학교가 쉬는 날 — 행사가 아니라 공휴일로 분류한다.
+  // SBTR_DD_SC_NM(수업공휴일구분): "휴업일"(재량휴업일 등)이나 "공휴일"(법정공휴일)일 때만
+  // 공휴일로 분류한다. "해당없음"/"수업일" 등은 시업식·입학식 같은 실제 학교 행사이므로
+  // 제외한다 — "수업일이 아니면 전부 공휴일" 식으로 판단하면 이런 실제 행사까지
+  // 공휴일로 잘못 분류되므로 반드시 명시적으로 매칭해야 한다.
+  const HOLIDAY_VALUES = new Set(["휴업일", "공휴일"]);
   const rows = extractRows(data, "SchoolSchedule");
   return rows
     .filter((r) => r.AA_YMD)
@@ -77,6 +80,6 @@ exports.fetchNeisSchedule = onCall({ secrets: [NEIS_API_KEY], region: REGION, co
       date: `${r.AA_YMD.slice(0, 4)}-${r.AA_YMD.slice(4, 6)}-${r.AA_YMD.slice(6, 8)}`,
       title: r.EVENT_NM || "(제목 없음)",
       memo: r.EVENT_CNTNT || "",
-      isHoliday: r.SBTR_DD_SC_NM !== "수업일",
+      isHoliday: HOLIDAY_VALUES.has(r.SBTR_DD_SC_NM),
     }));
 });

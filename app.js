@@ -235,11 +235,12 @@ async function enterSchool() {
 
 let neisReclassifyDone = false;
 
-// 예전(공휴일 자동 분류 기능이 생기기 전)에 나이스에서 가져온 항목은 isHoliday 값이
-// 아예 없다. 그런 항목이 있으면 같은 달을 나이스에서 다시 조회해 조용히 보정한다.
+// 나이스에서 가져온 항목의 공휴일 여부를 세션당 한 번, 조용히 나이스와 다시 맞춰본다.
+// isHoliday 값이 아예 없던 예전 데이터뿐 아니라, 분류 기준이 바뀌어 값이 잘못
+// 저장된 경우도 있어서 neis 출처 항목은 전부 대상으로 삼는다.
 async function reclassifyNeisHolidays() {
   if (!schoolMeta?.neisOfficeCode || !schoolMeta?.neisSchoolCode) return;
-  const stale = state.events.filter((e) => e.source === "neis" && e.isHoliday === undefined);
+  const stale = state.events.filter((e) => e.source === "neis");
   if (!stale.length) return;
 
   const months = new Set(stale.map((e) => e.date.slice(0, 7)));
@@ -264,7 +265,7 @@ async function reclassifyNeisHolidays() {
   const lookup = new Map(neisRows.map((r) => [`${r.date}|${r.title}`, r.isHoliday]));
   for (const e of stale) {
     const isHoliday = lookup.get(`${e.date}|${e.title}`);
-    if (isHoliday === undefined) continue; // 나이스에서 더 이상 확인 안 되면 그대로 둔다
+    if (isHoliday === undefined || isHoliday === e.isHoliday) continue; // 확인 불가하거나 이미 맞으면 건너뜀
     try {
       await updateDoc(doc(db, "schools", schoolId, "events", e.id), { isHoliday });
     } catch (e2) {
