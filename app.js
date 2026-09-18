@@ -703,7 +703,7 @@ function renderTodayLists() {
     item.className = "side-item";
     item.innerHTML = `
       <div class="si-top"><span>${escapeHtml(d.person)} · ${escapeHtml(d.role)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${escapeHtml(d.type)} · ${escapeHtml(d.title || "")}</div>`;
+      <div class="si-meta">${escapeHtml(d.type)} · ${escapeHtml(d.title || "")}${d.destination ? ` · ${escapeHtml(d.destination)}` : ""}</div>`;
     item.addEventListener("click", () => openModal("duty", d.date, d));
     els.todayDutyList.appendChild(item);
   });
@@ -824,6 +824,7 @@ function openModal(type, dateStr, existing) {
   document.getElementById("du-role").value = "교사";
   document.getElementById("du-type").value = "출장";
   document.getElementById("du-title").value = "";
+  document.getElementById("du-destination").value = "";
   document.getElementById("du-memo").value = "";
   document.getElementById("doc-title").value = "";
   document.getElementById("doc-person").value = localName || "";
@@ -840,6 +841,7 @@ function openModal(type, dateStr, existing) {
       document.getElementById("du-role").value = existing.role || "교사";
       document.getElementById("du-type").value = existing.type || "출장";
       document.getElementById("du-title").value = existing.title || "";
+      document.getElementById("du-destination").value = existing.destination || "";
       document.getElementById("du-memo").value = existing.memo || "";
     } else if (type === "doc") {
       document.getElementById("doc-title").value = existing.title || "";
@@ -850,6 +852,7 @@ function openModal(type, dateStr, existing) {
     }
   }
 
+  updateDutyDestinationVisibility();
 
   if (existing) {
     itemAuthorLine.hidden = false;
@@ -862,6 +865,12 @@ function openModal(type, dateStr, existing) {
   modalOverlay.hidden = false;
   closeDayPopover();
 }
+
+function updateDutyDestinationVisibility() {
+  const isBusinessTrip = document.getElementById("du-type").value === "출장";
+  document.getElementById("du-destinationRow").hidden = !isBusinessTrip;
+}
+document.getElementById("du-type").addEventListener("change", updateDutyDestinationVisibility);
 
 function closeModal() {
   modalOverlay.hidden = true;
@@ -926,12 +935,14 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
     } else {
       const person = document.getElementById("du-person").value.trim();
       if (!person) return alert("대상자를 입력해주세요.");
+      const dutyType = document.getElementById("du-type").value;
       payload = {
         date, time, endDate, endTime,
         person,
         role: document.getElementById("du-role").value,
-        type: document.getElementById("du-type").value,
+        type: dutyType,
         title: document.getElementById("du-title").value.trim(),
+        destination: dutyType === "출장" ? document.getElementById("du-destination").value.trim() : "",
         memo: document.getElementById("du-memo").value.trim(),
       };
     }
@@ -1003,7 +1014,7 @@ function openDayPopover(cellEl, dateStr) {
 
   const rows = [
     ...events.map((e) => ({ type: "event", cls: e.isHoliday ? "holiday" : "event", label: `${timeLabel(e)}${e.title}`, item: e })),
-    ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${timeLabel(d)}${d.person}(${d.role}) ${d.type} - ${d.title || ""}`, item: d })),
+    ...duties.map((d) => ({ type: "duty", cls: "duty", label: `${timeLabel(d)}${d.person}(${d.role}) ${d.type} - ${d.title || ""}${d.destination ? ` (${d.destination})` : ""}`, item: d })),
     ...docs.map((d) => ({ type: "doc", cls: "doc", label: `${timeLabel(d)}${d.title}${d.person ? ` - ${d.person}` : ""} [${d.status === "done" ? "완료" : "처리중"}]`, item: d })),
   ];
   if (!rows.length) {
@@ -1173,7 +1184,7 @@ function buildPrintTable() {
     const tdDuty = document.createElement("td");
     tdDuty.className = "col-duty";
     tdDuty.innerHTML = duties
-      .map((d2) => `<div class="print-item">${escapeHtml(timeLabel(d2))}${escapeHtml(d2.person)}(${escapeHtml(d2.role)}) ${escapeHtml(d2.type)}${d2.title ? ` - ${escapeHtml(d2.title)}` : ""}</div>`)
+      .map((d2) => `<div class="print-item">${escapeHtml(timeLabel(d2))}${escapeHtml(d2.person)}(${escapeHtml(d2.role)}) ${escapeHtml(d2.type)}${d2.title ? ` - ${escapeHtml(d2.title)}` : ""}${d2.destination ? ` (${escapeHtml(d2.destination)})` : ""}</div>`)
       .join("") || "";
 
     const tdDoc = document.createElement("td");
