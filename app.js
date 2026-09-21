@@ -459,7 +459,7 @@ async function loadNeisSchedule() {
       row.innerHTML = `
         <input type="checkbox" data-idx="${i}" style="margin-top:3px" ${r.alreadyAdded ? "checked disabled" : "checked"} />
         <span>
-          <div class="si-top"><span>${escapeHtml(r.title)}${r.isHoliday ? ' <span class="holiday-badge">공휴일</span>' : ""}</span><span class="si-date">${r.date.slice(5)}</span></div>
+          <div class="si-top"><span>${escapeHtml(r.title)}${r.isHoliday ? ' <span class="holiday-badge">공휴일(휴업일)</span>' : ""}</span><span class="si-date">${r.date.slice(5)}</span></div>
           <div class="si-meta">${r.alreadyAdded ? "이미 등록되어 있어요" : escapeHtml(r.memo || "")}</div>
         </span>`;
       listBox.appendChild(row);
