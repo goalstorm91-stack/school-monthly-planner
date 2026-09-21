@@ -339,26 +339,33 @@ body {
     display: block;
     position: absolute; top: 0; left: 0; width: 100%;
   }
-  @page { size: A4 landscape; margin: 12mm; }
+  /* 용지 방향(@page)은 인쇄 직전에 선택값에 맞춰 JS가 <style id="printPageStyle">로 넣는다 */
 
-  .print-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
-  .print-title-block h1 { font-size: 22px; margin: 0 0 4px; }
-  .print-school-name { font-size: 13px; color: #444; }
+  .print-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .print-header h1 { font-size: 22px; margin: 0; }
+  .print-school-name { font-size: 14px; font-weight: 700; color: #222; white-space: nowrap; }
 
-  .print-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  /* 고정 레이아웃: 일/요일 칸은 좁게 두고, 남는 폭을 행사·복무·공문(보고)이 똑같이 나눠 쓴다 */
+  .print-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11.5px; }
+  .print-table thead { display: table-header-group; }
+  .print-table tr { page-break-inside: avoid; }
   .print-table th, .print-table td {
     border: 1px solid #333; padding: 4px 6px; vertical-align: top; text-align: left;
   }
   .print-table th { background: #eee; text-align: center; }
-  .col-date { width: 32px; text-align: center; }
-  .col-day { width: 34px; text-align: center; }
-  .col-event, .col-duty, .col-doc { width: 22%; }
+  .print-table th.col-date, .print-table td.col-date,
+  .print-table th.col-day, .print-table td.col-day { padding-left: 2px; padding-right: 2px; text-align: center; }
+  .col-date { width: 8mm; }
+  .col-day { width: 10mm; }
   .print-row-sun td.col-date, .print-row-sun td.col-day { color: #c00; }
   .print-row-sat td.col-date, .print-row-sat td.col-day { color: #00c; }
   .print-row-weekend { background: #fafafa; }
-  .print-item { margin: 0 0 2px; }
+  .print-item { margin: 0 0 2px; word-break: keep-all; overflow-wrap: anywhere; }
   .print-item:last-child { margin-bottom: 0; }
   .print-footer { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: #555; }
+
+  .print-area.print-portrait .print-header h1 { font-size: 20px; }
+  .print-area.print-portrait .print-table { font-size: 11px; }
 
   .print-area.hide-event-col .col-event { display: none; }
   .print-area.hide-duty-col .col-duty { display: none; }
@@ -424,6 +431,8 @@ body {
   display: flex; align-items: center; gap: 9px; padding: 9px 4px; font-size: 14.5px; cursor: pointer;
 }
 .print-check-row input { width: 17px; height: 17px; cursor: pointer; }
+.print-orient-title { font-size: 13px; font-weight: 700; color: var(--color-text-dim); padding: 2px 4px; }
+.print-orient-row { display: flex; gap: 22px; }
 .print-check-divider { height: 1px; background: var(--color-border); margin: 2px 0 4px; }
 
 /* ---------- Responsive ---------- */

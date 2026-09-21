@@ -1270,6 +1270,17 @@ document.getElementById("printModalGo").addEventListener("click", () => {
   printArea.classList.toggle("hide-duty-col", !selected.duty);
   printArea.classList.toggle("hide-doc-col", !selected.doc);
 
+  // 용지 방향: @page 는 클래스로 바꿀 수 없어서 인쇄 직전에 규칙을 새로 넣는다
+  const orientation = document.querySelector('input[name="printOrient"]:checked').value;
+  let pageStyle = document.getElementById("printPageStyle");
+  if (!pageStyle) {
+    pageStyle = document.createElement("style");
+    pageStyle.id = "printPageStyle";
+    document.head.appendChild(pageStyle);
+  }
+  pageStyle.textContent = `@page { size: A4 ${orientation}; margin: 12mm; }`;
+  printArea.classList.toggle("print-portrait", orientation === "portrait");
+
   buildPrintTable();
   printModalOverlay.hidden = true;
   window.print();
