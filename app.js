@@ -85,6 +85,7 @@ const state = {
   events: [],
   duties: [],
   docs: [],
+  notices: [],
 };
 
 let schoolId = null;
@@ -279,6 +280,7 @@ function attachSchoolListeners() {
     ["events", (arr) => (state.events = arr)],
     ["duties", (arr) => (state.duties = arr)],
     ["docs", (arr) => (state.docs = arr)],
+    ["notices", (arr) => (state.notices = arr)],
   ];
   cols.forEach(([name, setter]) => {
     const unsub = onSnapshot(
@@ -303,6 +305,7 @@ function detachListeners() {
   state.events = [];
   state.duties = [];
   state.docs = [];
+  state.notices = [];
 }
 
 document.getElementById("schoolName").addEventListener("change", async (e) => {
@@ -582,6 +585,7 @@ function renderAll() {
   renderSummary();
   renderTodayLists();
   renderUpcomingLists();
+  renderNotices();
   saveViewPref();
 }
 
@@ -680,45 +684,46 @@ function docMetaLine(d) {
   return parts.join(" · ");
 }
 
+// 행사/복무/공문(보고) 한 건을 목록 카드로 그린다. 클릭하면 수정 창이 열린다.
+function buildSideItem(type, d, onBeforeOpen) {
+  const item = document.createElement("div");
+  item.className = "side-item";
+  if (type === "event") {
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
+      <div class="si-meta">${escapeHtml(d.memo || "")}</div>`;
+  } else if (type === "duty") {
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(d.person)} · ${escapeHtml(d.role)}</span><span class="si-date">${dateLabel(d)}</span></div>
+      <div class="si-meta">${escapeHtml(d.type)} · ${escapeHtml(d.title || "")}${d.destination ? ` · ${escapeHtml(d.destination)}` : ""}</div>`;
+  } else {
+    item.className = `side-item status-${d.status}`;
+    item.innerHTML = `
+      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
+      <div class="si-meta">${docMetaLine(d)}</div>`;
+  }
+  item.addEventListener("click", () => {
+    if (onBeforeOpen) onBeforeOpen();
+    openModal(type, d.date, d);
+  });
+  return item;
+}
+
 function renderTodayLists() {
   const { events: allEvents, duties, docs } = itemsForDate(todayStr());
   const events = allEvents.filter((e) => !e.isHoliday);
 
   els.todayEventList.innerHTML = "";
   if (!events.length) els.todayEventList.innerHTML = `<div class="empty-note">오늘 등록된 행사가 없습니다.</div>`;
-  events.forEach((e) => {
-    const item = document.createElement("div");
-    item.className = "side-item";
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(e.title)}</span><span class="si-date">${dateLabel(e)}</span></div>
-      <div class="si-meta">${escapeHtml(e.memo || "")}</div>`;
-    item.addEventListener("click", () => openModal("event", e.date, e));
-    els.todayEventList.appendChild(item);
-  });
+  events.forEach((e) => els.todayEventList.appendChild(buildSideItem("event", e)));
 
   els.todayDutyList.innerHTML = "";
   if (!duties.length) els.todayDutyList.innerHTML = `<div class="empty-note">오늘 등록된 복무가 없습니다.</div>`;
-  duties.forEach((d) => {
-    const item = document.createElement("div");
-    item.className = "side-item";
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(d.person)} · ${escapeHtml(d.role)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${escapeHtml(d.type)} · ${escapeHtml(d.title || "")}${d.destination ? ` · ${escapeHtml(d.destination)}` : ""}</div>`;
-    item.addEventListener("click", () => openModal("duty", d.date, d));
-    els.todayDutyList.appendChild(item);
-  });
+  duties.forEach((d) => els.todayDutyList.appendChild(buildSideItem("duty", d)));
 
   els.todayDocList.innerHTML = "";
   if (!docs.length) els.todayDocList.innerHTML = `<div class="empty-note">오늘 등록된 공문(보고)이 없습니다.</div>`;
-  docs.forEach((d) => {
-    const item = document.createElement("div");
-    item.className = `side-item status-${d.status}`;
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${docMetaLine(d)}</div>`;
-    item.addEventListener("click", () => openModal("doc", d.date, d));
-    els.todayDocList.appendChild(item);
-  });
+  docs.forEach((d) => els.todayDocList.appendChild(buildSideItem("doc", d)));
 }
 
 function addDays(dateStr, n) {
@@ -741,31 +746,153 @@ function renderUpcomingLists() {
     .sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.upcomingEventList.innerHTML = "";
   if (!events.length) els.upcomingEventList.innerHTML = `<div class="empty-note">앞으로 7일간 등록된 행사가 없습니다.</div>`;
-  events.forEach((e) => {
-    const item = document.createElement("div");
-    item.className = "side-item";
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(e.title)}</span><span class="si-date">${dateLabel(e)}</span></div>
-      <div class="si-meta">${escapeHtml(e.memo || "")}</div>`;
-    item.addEventListener("click", () => openModal("event", e.date, e));
-    els.upcomingEventList.appendChild(item);
-  });
+  events.forEach((e) => els.upcomingEventList.appendChild(buildSideItem("event", e)));
 
   const docs = state.docs
     .filter((d) => d.date >= rangeStart && d.date <= rangeEnd)
     .sort((a, b) => a.date.localeCompare(b.date) || byTime(a, b));
   els.upcomingDocList.innerHTML = "";
   if (!docs.length) els.upcomingDocList.innerHTML = `<div class="empty-note">앞으로 7일간 등록된 공문(보고)이 없습니다.</div>`;
-  docs.forEach((d) => {
-    const item = document.createElement("div");
-    item.className = `side-item status-${d.status}`;
-    item.innerHTML = `
-      <div class="si-top"><span>${escapeHtml(d.title)}</span><span class="si-date">${dateLabel(d)}</span></div>
-      <div class="si-meta">${docMetaLine(d)}</div>`;
-    item.addEventListener("click", () => openModal("doc", d.date, d));
-    els.upcomingDocList.appendChild(item);
+  docs.forEach((d) => els.upcomingDocList.appendChild(buildSideItem("doc", d)));
+}
+
+// ============================================================
+// 요약 카드 클릭 → 해당 항목 목록 보기
+// ============================================================
+const listModalOverlay = document.getElementById("listModalOverlay");
+function closeListModal() {
+  listModalOverlay.hidden = true;
+}
+
+function openSummaryList(kind) {
+  const { viewYear: y, viewMonth: m } = state;
+  const byDate = (a, b) => a.date.localeCompare(b.date) || byTime(a, b);
+  let title, type, items;
+  if (kind === "event") {
+    title = `${y}년 ${m}월 행사`;
+    type = "event";
+    items = state.events.filter((e) => itemOverlapsMonth(e, y, m) && !e.isHoliday);
+  } else if (kind === "duty") {
+    title = `${y}년 ${m}월 복무`;
+    type = "duty";
+    items = state.duties.filter((d) => itemOverlapsMonth(d, y, m));
+  } else if (kind === "doc") {
+    title = `${y}년 ${m}월 공문(보고)`;
+    type = "doc";
+    items = state.docs.filter((d) => isInMonth(d.date, y, m));
+  } else {
+    title = `${y}년 ${m}월 공문(보고) 처리 대기`;
+    type = "doc";
+    items = state.docs.filter((d) => isInMonth(d.date, y, m) && d.status === "pending");
+  }
+  items.sort(byDate);
+
+  document.getElementById("listModalTitle").textContent = `${title} (${items.length}건)`;
+  const body = document.getElementById("listModalBody");
+  body.innerHTML = "";
+  if (!items.length) body.innerHTML = `<div class="empty-note">해당하는 항목이 없습니다.</div>`;
+  items.forEach((d) => body.appendChild(buildSideItem(type, d, closeListModal)));
+  listModalOverlay.hidden = false;
+}
+
+document.querySelectorAll("[data-summary]").forEach((card) => {
+  card.addEventListener("click", () => openSummaryList(card.dataset.summary));
+});
+document.getElementById("listModalClose").addEventListener("click", closeListModal);
+listModalOverlay.addEventListener("click", (e) => {
+  if (e.target === listModalOverlay) closeListModal();
+});
+
+// ============================================================
+// 공지사항 (오른쪽 → 왼쪽으로 흐르는 전광판)
+// ============================================================
+const noticeModalOverlay = document.getElementById("noticeModalOverlay");
+
+function noticeMillis(n) {
+  // 방금 등록해서 서버 시각이 아직 안 내려온 항목은 가장 최신으로 취급
+  return n.createdAt?.toMillis?.() ?? Date.now();
+}
+function sortedNotices() {
+  return [...state.notices].sort((a, b) => noticeMillis(b) - noticeMillis(a));
+}
+
+function renderNotices() {
+  const track = document.getElementById("noticeTrack");
+  const list = sortedNotices();
+  if (!list.length) {
+    track.classList.remove("scrolling");
+    track.textContent = "등록된 공지사항이 없습니다.";
+  } else {
+    const text = list.map((n) => n.text.replace(/\s*\n\s*/g, " ")).join("        ●        ");
+    if (track.textContent !== text) track.textContent = text;
+    track.classList.add("scrolling");
+    // 글자 수에 비례해 속도를 조절 (너무 빠르면 읽을 수 없으니 최소 20초)
+    track.style.setProperty("--notice-duration", `${Math.max(20, Math.round(text.length * 0.3))}s`);
+  }
+  if (!noticeModalOverlay.hidden) renderNoticeManageList();
+}
+
+function renderNoticeManageList() {
+  const box = document.getElementById("noticeList");
+  const list = sortedNotices();
+  box.innerHTML = "";
+  if (!list.length) {
+    box.innerHTML = `<div class="empty-note">등록된 공지사항이 없습니다.</div>`;
+    return;
+  }
+  list.forEach((n) => {
+    const row = document.createElement("div");
+    row.className = "side-item";
+    row.style.cssText = "display:flex;align-items:flex-start;gap:10px;cursor:default";
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;white-space:pre-wrap;word-break:break-word">${escapeHtml(n.text)}
+        <div class="si-meta">${escapeHtml(n.createdByName || "")}</div>
+      </div>
+      <button class="btn btn-sm btn-danger">삭제</button>`;
+    row.querySelector("button").addEventListener("click", async () => {
+      if (!confirm("이 공지사항을 삭제할까요?")) return;
+      try {
+        await deleteDoc(doc(db, "schools", schoolId, "notices", n.id));
+      } catch (e) {
+        alert("삭제에 실패했습니다: " + e.message);
+      }
+    });
+    box.appendChild(row);
   });
 }
+
+function closeNoticeModal() {
+  noticeModalOverlay.hidden = true;
+}
+document.getElementById("noticeManageBtn").addEventListener("click", () => {
+  renderNoticeManageList();
+  noticeModalOverlay.hidden = false;
+});
+document.getElementById("noticeModalClose").addEventListener("click", closeNoticeModal);
+document.getElementById("noticeCloseBtn").addEventListener("click", closeNoticeModal);
+noticeModalOverlay.addEventListener("click", (e) => {
+  if (e.target === noticeModalOverlay) closeNoticeModal();
+});
+
+document.getElementById("noticeAddBtn").addEventListener("click", async () => {
+  const input = document.getElementById("noticeInput");
+  const text = input.value.trim();
+  if (!text) return alert("공지사항 내용을 입력해주세요.");
+  const btn = document.getElementById("noticeAddBtn");
+  btn.disabled = true;
+  try {
+    await addDoc(collection(db, "schools", schoolId, "notices"), {
+      text,
+      createdByName: localName || "이름없음",
+      createdAt: serverTimestamp(),
+    });
+    input.value = "";
+  } catch (e) {
+    alert("등록에 실패했습니다: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ============================================================
 // MODAL (add / edit)

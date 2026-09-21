@@ -116,22 +116,61 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .summary-card {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
   border-left: 6px solid var(--color-primary);
   border-radius: var(--radius);
-  padding: 16px 18px;
+  padding: 9px 16px;
   box-shadow: var(--shadow);
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform .12s, box-shadow .12s;
 }
+.summary-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(16,24,40,0.12); }
+.summary-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .summary-card.event-color { border-left-color: var(--color-event); }
 .summary-card.duty-color { border-left-color: var(--color-duty); }
 .summary-card.doc-color { border-left-color: var(--color-doc); }
 .summary-card.doc-pending-color { border-left-color: var(--color-doc-pending); }
-.summary-num { font-size: 34px; font-weight: 800; line-height: 1.1; letter-spacing: -0.5px; }
-.summary-label { color: var(--color-text-dim); font-size: 14px; margin-top: 5px; font-weight: 500; }
+.summary-num { font-size: 27px; font-weight: 800; line-height: 1.1; letter-spacing: -0.5px; }
+.summary-label { color: var(--color-text-dim); font-size: 13.5px; margin-top: 1px; font-weight: 500; }
+
+/* ---------- 공지사항 (오른쪽 → 왼쪽으로 흐르는 전광판) ---------- */
+.notice-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px 14px;
+  margin-bottom: 18px;
+}
+.notice-title { font-weight: 800; font-size: 14.5px; white-space: nowrap; }
+.notice-marquee {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+  font-size: 14.5px;
+}
+.notice-track { display: inline-block; }
+.notice-track.scrolling {
+  padding-left: 100%;
+  animation: notice-scroll var(--notice-duration, 30s) linear infinite;
+}
+.notice-marquee:hover .notice-track.scrolling { animation-play-state: paused; }
+@keyframes notice-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
 
 /* ---------- Main grid ---------- */
 .main-grid {
@@ -305,9 +344,6 @@ body {
   .print-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
   .print-title-block h1 { font-size: 22px; margin: 0 0 4px; }
   .print-school-name { font-size: 13px; color: #444; }
-  .approval-table { border-collapse: collapse; }
-  .approval-table td { border: 1px solid #333; width: 70px; height: 22px; text-align: center; font-size: 11px; }
-  .approval-sign-row td { height: 42px; }
 
   .print-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
   .print-table th, .print-table td {

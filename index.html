@@ -6,7 +6,7 @@
 <title>월중계획 대시보드</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>" />
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
-<link rel="stylesheet" href="style.css?v=9" />
+<link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
 
@@ -90,22 +90,31 @@
 
   <!-- ===================== SUMMARY CARDS ===================== -->
   <section class="summary-row">
-    <div class="summary-card event-color">
+    <button type="button" class="summary-card event-color" data-summary="event" title="클릭하면 목록을 볼 수 있어요">
       <div class="summary-num" id="sumEvents">0</div>
       <div class="summary-label">이번 달 행사</div>
-    </div>
-    <div class="summary-card duty-color">
+    </button>
+    <button type="button" class="summary-card duty-color" data-summary="duty" title="클릭하면 목록을 볼 수 있어요">
       <div class="summary-num" id="sumDuties">0</div>
       <div class="summary-label">복무(출장·연수 등)</div>
-    </div>
-    <div class="summary-card doc-color">
+    </button>
+    <button type="button" class="summary-card doc-color" data-summary="doc" title="클릭하면 목록을 볼 수 있어요">
       <div class="summary-num" id="sumDocs">0</div>
       <div class="summary-label">공문(보고)</div>
-    </div>
-    <div class="summary-card doc-pending-color">
+    </button>
+    <button type="button" class="summary-card doc-pending-color" data-summary="docPending" title="클릭하면 목록을 볼 수 있어요">
       <div class="summary-num" id="sumDocsPending">0</div>
       <div class="summary-label">공문(보고) 처리 대기</div>
+    </button>
+  </section>
+
+  <!-- ===================== 공지사항 ===================== -->
+  <section class="notice-bar" aria-label="공지사항">
+    <div class="notice-title">📢 공지사항</div>
+    <div class="notice-marquee" id="noticeMarquee">
+      <span class="notice-track" id="noticeTrack">등록된 공지사항이 없습니다.</span>
     </div>
+    <button id="noticeManageBtn" class="btn btn-sm">공지 추가·관리</button>
   </section>
 
   <!-- ===================== MAIN GRID ===================== -->
@@ -193,6 +202,42 @@
       <p class="onboarding-hint">이 코드를 학교 구성원에게 전달하면, 접속 후 "참여코드로 참여"에서 입력해 같은 학교 데이터에 접속할 수 있습니다.</p>
       <div class="invite-code-box" id="inviteCodeBox">------</div>
       <button id="copyInviteBtn" class="btn" style="width:100%">코드 복사</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 요약 카드 목록 MODAL ===================== -->
+<div id="listModalOverlay" class="modal-overlay" hidden>
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h3 id="listModalTitle">목록</h3>
+      <button id="listModalClose" class="btn icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="listModalBody" class="side-list" style="max-height:60vh"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 공지사항 관리 MODAL ===================== -->
+<div id="noticeModalOverlay" class="modal-overlay" hidden>
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h3>공지사항 추가·관리</h3>
+      <button id="noticeModalClose" class="btn icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>새 공지사항</label>
+        <textarea id="noticeInput" placeholder="예) 9월 25일(금) 교직원 회의는 15:30에 시작합니다."></textarea>
+      </div>
+      <button id="noticeAddBtn" class="btn btn-primary" style="width:100%">공지 등록</button>
+      <div class="print-check-divider" style="margin:14px 0 8px"></div>
+      <div id="noticeList" class="side-list" style="max-height:260px"></div>
+    </div>
+    <div class="modal-footer">
+      <div class="spacer"></div>
+      <button id="noticeCloseBtn" class="btn">닫기</button>
     </div>
   </div>
 </div>
@@ -362,19 +407,6 @@
       <h1 id="printTitle">2026년 1월 월중계획</h1>
       <div id="printSchoolName" class="print-school-name">OO초등학교</div>
     </div>
-    <table class="approval-table">
-      <tbody>
-        <tr>
-          <td class="approval-role">담당</td>
-          <td class="approval-role">교무부장</td>
-          <td class="approval-role">교감</td>
-          <td class="approval-role">교장</td>
-        </tr>
-        <tr class="approval-sign-row">
-          <td></td><td></td><td></td><td></td>
-        </tr>
-      </tbody>
-    </table>
   </div>
 
   <table class="print-table">
@@ -396,6 +428,6 @@
   </div>
 </div>
 
-<script type="module" src="app.js?v=21"></script>
+<script type="module" src="app.js?v=22"></script>
 </body>
 </html>

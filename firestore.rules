@@ -31,6 +31,9 @@ service cloud.firestore {
       match /docs/{id} {
         allow read, write: if true;
       }
+      match /notices/{id} {
+        allow read, write: if true;
+      }
     }
   }
 }
