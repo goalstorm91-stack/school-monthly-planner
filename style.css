@@ -341,8 +341,13 @@ body {
   }
   /* 용지 방향(@page)은 인쇄 직전에 선택값에 맞춰 JS가 <style id="printPageStyle">로 넣는다 */
 
-  .print-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-  .print-header h1 { font-size: 22px; margin: 0; }
+  /* 일부 프린터 드라이버는 미리보기와 달리 flexbox 레이아웃을 실제 인쇄에서 누락시키는
+     경우가 있어, 제목/학교명 줄은 더 안정적인 표(table) 레이아웃을 쓴다. */
+  .print-header-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .print-header-table td { border: none; padding: 0; vertical-align: bottom; }
+  .print-title-cell { text-align: left; }
+  .print-school-cell { text-align: right; white-space: nowrap; }
+  .print-header-table h1 { font-size: 22px; margin: 0; }
   .print-school-name { font-size: 14px; font-weight: 700; color: #222; white-space: nowrap; }
 
   /* 고정 레이아웃: 일/요일 칸은 좁게 두고, 남는 폭을 행사·복무·공문(보고)이 똑같이 나눠 쓴다 */
@@ -362,9 +367,11 @@ body {
   .print-row-weekend { background: #fafafa; }
   .print-item { margin: 0 0 2px; word-break: keep-all; overflow-wrap: anywhere; }
   .print-item:last-child { margin-bottom: 0; }
-  .print-footer { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: #555; }
+  .print-footer { width: 100%; margin-top: 8px; font-size: 10.5px; color: #555; overflow: hidden; }
+  .print-footer span:first-child { float: left; }
+  .print-page-note { float: right; }
 
-  .print-area.print-portrait .print-header h1 { font-size: 20px; }
+  .print-area.print-portrait .print-header-table h1 { font-size: 20px; }
   .print-area.print-portrait .print-table { font-size: 11px; }
 
   .print-area.hide-event-col .col-event { display: none; }
